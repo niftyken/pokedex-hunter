@@ -10,9 +10,9 @@ const FIRST_LAUNCH_WANTED_LIST = ['Charizard', 'Pikachu', 'Vulpix', 'Zoroark', '
 export const DEFAULT_SETTINGS: AppSettings = {
   sensitivity: 'balanced',
   showDetectedTitle: true,
-  demoMode: true,
+  demoMode: false,
   cameraDeviceId: '',
-  showOcrDebug: false,
+  showOcrDebug: true,
 };
 
 export function loadWantedList(): string[] {

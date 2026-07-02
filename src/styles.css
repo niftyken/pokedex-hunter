@@ -10,6 +10,9 @@ button { cursor: pointer; }
 .camera-vignette { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(4,7,12,.7), transparent 24%, transparent 70%, rgba(4,7,12,.86)), radial-gradient(ellipse at center, transparent 36%, rgba(0,0,0,.56) 100%); }
 .scan-header { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; padding: calc(18px + env(safe-area-inset-top)) 18px 12px; }
 .brand { display: flex; gap: 9px; align-items: center; font-weight: 750; letter-spacing: -.025em; text-shadow: 0 1px 9px #000; }
+.brand-copy { display: grid; gap: 1px; }
+.brand-name { line-height: 1.05; }
+.build-marker { color: #c6d6ea; font-size: .62rem; font-weight: 700; letter-spacing: .04em; line-height: 1.05; opacity: .9; }
 .brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: #102019; background: #c0ff7c; font-weight: 900; font-size: .82rem; box-shadow: 0 0 20px #c0ff7c44; }
 .remaining-pill, .read-pill { border: 1px solid #ffffff20; background: #0e141ddd; color: #e8eef8; border-radius: 999px; padding: 8px 11px; font-size: .78rem; backdrop-filter: blur(12px); }
 .scan-stage { position: absolute; inset: 86px 14px 128px; display: grid; place-items: center; z-index: 1; }

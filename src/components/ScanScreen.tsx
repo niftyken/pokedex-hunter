@@ -3,6 +3,7 @@ import { ChevronDown, ScanLine, Sparkles, X } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useTitleOcr, type ScanRecognition } from '../hooks/useTitleOcr';
 import { findWantedMatch } from '../lib/matching';
+import { APP_VERSION } from '../lib/appMeta';
 import type { AppSettings, FrozenFrame, MatchResult, Signal } from '../types';
 
 const demoTitles = ['Machop', 'Dark Charizard', "Blaine's Charizard", 'Pikachu & Zekrom-GX', "Misty's Golduck", 'Basic Energy', "Professor's Research", 'Alolan Vulpix VSTAR', "N's Zoroark ex", 'Random Noise'];
@@ -122,7 +123,7 @@ export function ScanScreen({
     <div className="camera-vignette" />
 
     <header className="scan-header">
-      <div className="brand"><span className="brand-mark">P</span><span>Pokedex Hunter</span></div>
+      <div className="brand"><span className="brand-mark">P</span><span className="brand-copy"><span className="brand-name">Pokedex Hunter</span><span className="build-marker">{APP_VERSION}</span></span></div>
       <button className="remaining-pill" aria-label="Wanted list count">{remainingLabel}</button>
     </header>
 
