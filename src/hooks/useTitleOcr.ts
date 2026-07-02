@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { findWantedMatch } from '../lib/matching';
+import { formatDexNumber, resolvePokemonRecognition, type PokemonRecognition } from '../lib/species';
 import { TesseractOcrAdapter } from '../lib/ocr';
 import type { OcrStatus, Sensitivity } from '../types';
 
@@ -26,6 +27,17 @@ export interface OcrDebugCandidate {
   confidence: number;
   selected: boolean;
   directWantedMatch: boolean;
+  canonicalText?: string;
+  speciesScore?: number;
+  runnerUp?: string;
+}
+
+export interface ScanRecognition {
+  rawText: string;
+  displayText: string;
+  ocrConfidence: number;
+  crop: string;
+  species?: PokemonRecognition;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -183,11 +195,11 @@ export function useTitleOcr({
   debugEnabled: boolean;
   wantedList: string[];
   sensitivity: Sensitivity;
-  onResult: (result: { text: string; confidence: number }) => void;
+  onResult: (result: ScanRecognition) => void;
 }) {
   const [status, setStatus] = useState<OcrStatus>('idle');
   const [debugCandidates, setDebugCandidates] = useState<OcrDebugCandidate[]>([]);
-  const [lastResult, setLastResult] = useState<{ text: string; confidence: number; crop: string } | null>(null);
+  const [lastResult, setLastResult] = useState<ScanRecognition | null>(null);
   const onResultRef = useRef(onResult);
   const adapterRef = useRef<TesseractOcrAdapter | null>(null);
   const previousSignatureRef = useRef<number[]>([]);
@@ -215,6 +227,7 @@ export function useTitleOcr({
         attempt: CropAttempt;
         text: string;
         confidence: number;
+        recognition: PokemonRecognition | null;
         directWantedMatch: boolean;
         score: number;
       }>;
@@ -222,11 +235,19 @@ export function useTitleOcr({
       for (const attempt of attempts) {
         const result = await adapter.readTitle(attempt.canvas);
         const text = result.text.trim();
-        const match = text ? findWantedMatch(text, wantedList, sensitivity, result.confidence) : null;
-        const directWantedMatch = Boolean(match?.isDirectMatch);
+        const recognition = text ? resolvePokemonRecognition(text) : null;
+        const canonicalName = recognition?.species.name ?? text;
+        const match = canonicalName ? findWantedMatch(canonicalName, wantedList, sensitivity, result.confidence) : null;
+        const directWantedMatch = Boolean(match?.isDirectMatch && recognition);
+
+        // A plausible closed-lexicon species recognition is more useful than a
+        // generic OCR string; an active Wanted List match is still decisive.
+        const speciesBonus = recognition
+          ? (recognition.confidence === 'high' ? 2_400 : 1_200) + recognition.score * 100
+          : 0;
         const matchBonus = directWantedMatch ? 10_000 : match ? 800 : 0;
-        const score = matchBonus + result.confidence + Math.min(18, text.length);
-        evaluated.push({ attempt, text, confidence: result.confidence, directWantedMatch, score });
+        const score = matchBonus + speciesBonus + result.confidence + Math.min(18, text.length);
+        evaluated.push({ attempt, text, confidence: result.confidence, recognition, directWantedMatch, score });
       }
 
       const best = evaluated.reduce<typeof evaluated[number] | null>((currentBest, candidate) => (
@@ -245,12 +266,28 @@ export function useTitleOcr({
           confidence: candidate.confidence,
           selected: candidate.attempt.label === best.attempt.label,
           directWantedMatch: candidate.directWantedMatch,
+          canonicalText: candidate.recognition
+            ? `${candidate.recognition.species.name} ${formatDexNumber(candidate.recognition.species.dex)}${candidate.recognition.confidence === 'medium' ? ' ?' : ''}`
+            : undefined,
+          speciesScore: candidate.recognition?.score,
+          runnerUp: candidate.recognition?.runnerUp
+            ? `${candidate.recognition.runnerUp.name} (${Math.round(candidate.recognition.runnerUpScore * 100)}%)`
+            : undefined,
         })));
       }
 
       if (best.text) {
-        setLastResult({ text: best.text, confidence: best.confidence, crop: best.attempt.label });
-        onResultRef.current({ text: best.text, confidence: best.confidence });
+        const scanRecognition: ScanRecognition = {
+          rawText: best.text,
+          displayText: best.recognition
+            ? `${best.recognition.species.name} ${formatDexNumber(best.recognition.species.dex)}${best.recognition.confidence === 'medium' ? ' ?' : ''}`
+            : best.text,
+          ocrConfidence: best.confidence,
+          crop: best.attempt.label,
+          species: best.recognition ?? undefined,
+        };
+        setLastResult(scanRecognition);
+        onResultRef.current(scanRecognition);
       }
     } catch {
       initializedRef.current = true;

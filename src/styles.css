@@ -102,3 +102,5 @@ button { cursor: pointer; }
   .ocr-debug-panel { top: 42%; }
   .ocr-debug-body { grid-template-columns: 1.45fr 1fr; align-items: start; }
 }
+.ocr-candidate .ocr-runner-up, .ocr-candidate .ocr-raw-text { margin-top: 2px; color: #a9b8cc; }
+.ocr-candidate .ocr-raw-text { color: #7f91ab; font-style: italic; }

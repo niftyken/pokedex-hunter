@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ScanLine, Sparkles, X } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
-import { useTitleOcr } from '../hooks/useTitleOcr';
+import { useTitleOcr, type ScanRecognition } from '../hooks/useTitleOcr';
 import { findWantedMatch } from '../lib/matching';
 import type { AppSettings, FrozenFrame, MatchResult, Signal } from '../types';
 
@@ -51,10 +51,18 @@ export function ScanScreen({
     pendingDirectRef.current = null;
   }, []);
 
-  const evaluateTitle = useCallback((title: string, ocrConfidence = 100) => {
-    if (!title.trim() || Date.now() < ignoreResultsUntilRef.current || frozen) return;
-    setLastRead(title);
-    const nextMatch = findWantedMatch(title, wantedList, settings.sensitivity, ocrConfidence);
+  const evaluateRecognition = useCallback((recognition: ScanRecognition) => {
+    if (!recognition.rawText.trim() || Date.now() < ignoreResultsUntilRef.current || frozen) return;
+    setLastRead(recognition.displayText);
+
+    const canonicalTitle = recognition.species?.species.name ?? recognition.rawText;
+    // A high-confidence closed-lexicon result can trigger normally. A medium
+    // candidate is deliberately treated as weak evidence and needs a second
+    // agreeing stable read before it can interrupt with a green hit.
+    const matchEvidence = recognition.species
+      ? (recognition.species.confidence === 'high' ? 100 : 0)
+      : recognition.ocrConfidence;
+    const nextMatch = findWantedMatch(canonicalTitle, wantedList, settings.sensitivity, matchEvidence);
     if (!nextMatch) return;
 
     const now = Date.now();
@@ -65,9 +73,6 @@ export function ScanScreen({
       && pending.count >= 1;
 
     if (nextMatch.confidence === 'possible' && !hasSecondDirectConfirmation) {
-      // A fuzzy resemblance always remains yellow. A direct token match with a
-      // weak global OCR score becomes green only after the same wanted term is
-      // seen again in a fresh stable read.
       if (nextMatch.isDirectMatch) {
         pendingDirectRef.current = pending?.term === nextMatch.wantedTerm
           && now - pending.lastSeenAt <= DIRECT_CONFIRM_WINDOW_MS
@@ -85,8 +90,18 @@ export function ScanScreen({
     pendingDirectRef.current = null;
     setSignal('green');
     setMatch(nextMatch);
-    setFrozen({ imageUrl: captureFrame(), recognizedTitle: title, wantedTerm: nextMatch.wantedTerm });
+    setFrozen({ imageUrl: captureFrame(), recognizedTitle: recognition.displayText, wantedTerm: nextMatch.wantedTerm });
   }, [captureFrame, frozen, settings.sensitivity, wantedList]);
+
+  const evaluateDemoTitle = useCallback((title: string) => {
+    evaluateRecognition({
+      rawText: title,
+      displayText: title,
+      ocrConfidence: 100,
+      crop: 'demo',
+    });
+  }, [evaluateRecognition]);
+
 
   const isFrozen = Boolean(frozen && match);
   const { status: ocrStatus, debugCandidates, lastResult, captureSample } = useTitleOcr({
@@ -96,7 +111,7 @@ export function ScanScreen({
     debugEnabled: settings.showOcrDebug,
     wantedList,
     sensitivity: settings.sensitivity,
-    onResult: ({ text, confidence }) => evaluateTitle(text, confidence),
+    onResult: evaluateRecognition,
   });
 
   const isReading = !settings.demoMode && (ocrStatus === 'warming' || ocrStatus === 'reading');
@@ -136,7 +151,7 @@ export function ScanScreen({
         <select id="demo-title" value={demoTitle} onChange={(e) => setDemoTitle(e.target.value)}>
           {demoTitles.map((title) => <option key={title}>{title}</option>)}
         </select>
-        <button onClick={() => evaluateTitle(demoTitle)}>Test</button>
+        <button onClick={() => evaluateDemoTitle(demoTitle)}>Test</button>
       </div>
     </section>}
 
@@ -144,7 +159,7 @@ export function ScanScreen({
       <div className="ocr-debug-header">
         <div>
           <label>OCR crop preview</label>
-          <p>Status: {ocrStatus}{lastResult ? ` · ${Math.round(lastResult.confidence)}% · ${lastResult.crop} crop` : ''}</p>
+          <p>Status: {ocrStatus}{lastResult ? ` · OCR ${Math.round(lastResult.ocrConfidence)}% · ${lastResult.crop} crop` : ''}</p>
         </div>
         <button onClick={() => void captureSample()}>Capture OCR sample</button>
       </div>
@@ -159,13 +174,15 @@ export function ScanScreen({
               <div className="ocr-debug-preview">
                 <img src={candidate.imageUrl} alt={`${candidate.label} OCR crop`} />
               </div>
-              <p className="ocr-candidate-result">{candidate.text}</p>
-              <small>{Math.round(candidate.confidence)}%{candidate.directWantedMatch ? ' · Wanted match' : ''}</small>
+              <p className="ocr-candidate-result">{candidate.canonicalText ?? candidate.text}</p>
+              <small>OCR {Math.round(candidate.confidence)}%{candidate.speciesScore ? ` · species ${Math.round(candidate.speciesScore * 100)}%` : ''}{candidate.directWantedMatch ? ' · Wanted match' : ''}</small>
+              {candidate.runnerUp && <small className="ocr-runner-up">Next: {candidate.runnerUp}</small>}
+              {candidate.canonicalText && <small className="ocr-raw-text">Raw: {candidate.text}</small>}
             </article>
           )) : <div className="ocr-debug-placeholder">No crop yet</div>}
         </div>
         <div className="ocr-debug-copy">
-          <p>All three title strips are shown. “Selected” is the candidate sent to matching: a complete active Wanted List term outranks generic OCR confidence. The panel sits over the card’s middle so the lower card boundary remains visible.</p>
+          <p>All three title strips are shown. Canonical names come from the local 1,025-species English lexicon. “Selected” prefers a plausible species, and an active Wanted List match still outranks generic OCR confidence. A ? means the species match is plausible but not yet high-confidence.</p>
         </div>
       </div>
     </section>}
