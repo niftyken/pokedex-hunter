@@ -22,7 +22,6 @@ export function normalizeForMatch(value: string): string {
 export function parseWantedList(raw: string): string[] {
   const seen = new Set<string>();
   const items: string[] = [];
-
   for (const line of raw.split(/\r?\n/)) {
     const display = line.trim();
     const key = normalizeForMatch(display);
@@ -44,14 +43,23 @@ function similarity(a: string, b: string): number {
   if (a.includes(b)) return 1;
   const aTokens = new Set(a.split(' '));
   const bTokens = b.split(' ');
-  const matching = bTokens.filter((token) => aTokens.has(token)).length;
-  return matching / bTokens.length;
+  return bTokens.filter((token) => aTokens.has(token)).length / bTokens.length;
+}
+
+// Tesseract's confidence applies to the *whole* title crop. A clear wanted
+// name followed by noisy HP/type text can have a lower global confidence even
+// though the wanted-term token itself is reliable. Direct matches therefore
+// use a lower immediate-green threshold; weaker direct reads need a second
+// stable confirmation in ScanScreen.
+function directGreenThreshold(sensitivity: Sensitivity): number {
+  return sensitivity === 'conservative' ? 58 : sensitivity === 'balanced' ? 34 : 18;
 }
 
 export function findWantedMatch(
   recognizedTitle: string,
   wantedList: string[],
   sensitivity: Sensitivity,
+  ocrConfidence = 100,
 ): MatchResult | null {
   const title = normalizeForMatch(recognizedTitle);
   if (!title) return null;
@@ -59,17 +67,21 @@ export function findWantedMatch(
   for (const wantedTerm of wantedList) {
     const term = normalizeForMatch(wantedTerm);
     if (tokenContains(title, term)) {
-      return { wantedTerm, recognizedTitle, confidence: 'strong' };
+      return {
+        wantedTerm,
+        recognizedTitle,
+        confidence: ocrConfidence >= directGreenThreshold(sensitivity) ? 'strong' : 'possible',
+        isDirectMatch: true,
+      };
     }
   }
 
-  // Demo-friendly possible-match classification. Future OCR can replace this with
-  // confidence data from the recognition engine while preserving this UI contract.
+  // Fuzzy title similarity never produces a blocking green result. It is only
+  // a quick yellow cue for a human to look again at an imperfect OCR read.
   const threshold = sensitivity === 'conservative' ? 0.93 : sensitivity === 'balanced' ? 0.75 : 0.55;
   for (const wantedTerm of wantedList) {
-    const score = similarity(title, normalizeForMatch(wantedTerm));
-    if (score >= threshold) {
-      return { wantedTerm, recognizedTitle, confidence: 'possible' };
+    if (similarity(title, normalizeForMatch(wantedTerm)) >= threshold) {
+      return { wantedTerm, recognizedTitle, confidence: 'possible', isDirectMatch: false };
     }
   }
   return null;
