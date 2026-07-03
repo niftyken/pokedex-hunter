@@ -1,10 +1,11 @@
 {
   "name": "Pokedex Hunter",
   "short_name": "Pokedex Hunter",
-  "description": "Camera-first wanted-list search tool for Pokémon card bulk.",
+  "description": "Camera-first wanted-list search tool for Pok\u00e9mon card bulk.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#090c12",
   "theme_color": "#0a0d13",
-  "icons": []
+  "icons": [],
+  "orientation": "portrait"
 }

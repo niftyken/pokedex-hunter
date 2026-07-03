@@ -1,10 +1,9 @@
-import { Camera, List, Settings } from 'lucide-react';
+import { Camera, List } from 'lucide-react';
 import type { Screen } from '../types';
 
 const tabs = [
   { id: 'scan' as const, label: 'Scan', icon: Camera },
   { id: 'wanted' as const, label: 'Wanted List', icon: List },
-  { id: 'settings' as const, label: 'Settings', icon: Settings },
 ];
 
 export function BottomNav({ active, onChange }: { active: Screen; onChange: (screen: Screen) => void }) {

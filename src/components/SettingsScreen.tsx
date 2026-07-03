@@ -1,47 +1,7 @@
-import { useEffect, useState } from 'react';
-import type { AppSettings, Sensitivity } from '../types';
-
-export function SettingsScreen({ settings, onChange }: { settings: AppSettings; onChange: (settings: AppSettings) => void }) {
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-
-  useEffect(() => {
-    navigator.mediaDevices?.enumerateDevices()
-      .then((all) => setDevices(all.filter((device) => device.kind === 'videoinput')))
-      .catch(() => undefined);
-  }, []);
-
-  const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => onChange({ ...settings, [key]: value });
-
-  return <main className="content-screen">
-    <header className="page-header"><div><p className="eyebrow">Preferences</p><h1>Settings</h1></div></header>
-
-    <section className="settings-group">
-      <h2>Match Sensitivity</h2>
-      <p>Controls how readily uncertain recognized Pokémon receive a brief yellow signal.</p>
-      <div className="segmented">
-        {(['conservative', 'balanced', 'sensitive'] as Sensitivity[]).map((value) => (
-          <button key={value} className={settings.sensitivity === value ? 'selected' : ''} onClick={() => update('sensitivity', value)}>{value}</button>
-        ))}
-      </div>
-    </section>
-
-    <section className="settings-group">
-      <h2>Camera</h2>
-      <p>The camera runs only while the Scan tab is open.</p>
-      <select value={settings.cameraDeviceId} onChange={(e) => update('cameraDeviceId', e.target.value)}>
-        <option value="">Rear camera (preferred)</option>
-        {devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Camera'}</option>)}
-      </select>
-    </section>
-
-    <section className="settings-group inline-setting">
-      <div>
-        <h2>Developer demo OCR</h2>
-        <p>Show simulated title controls on Scan. Leave this off for live English title OCR.</p>
-      </div>
-      <input type="checkbox" checked={settings.demoMode} onChange={(e) => update('demoMode', e.target.checked)} />
-    </section>
-
-    <p className="offline-note">OCR preview is controlled directly from Scan. All list data and settings stay on this device.</p>
-  </main>;
+/**
+ * Retained as a harmless compatibility module for older local checkouts.
+ * Camera, sensitivity, and preview controls now live directly on Scan.
+ */
+export function SettingsScreen() {
+  return null;
 }
