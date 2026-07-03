@@ -3,14 +3,15 @@ import { resolvePokemonRecognition, formatDexNumber, type PokemonRecognition } f
 import { TesseractOcrAdapter } from '../lib/ocr';
 import type { OcrStatus } from '../types';
 
-// Handheld-oriented cadence: the camera is sampled frequently enough to notice
-// when a card settles, but costly OCR is attempted no more than about once per
-// 0.9 seconds. A candidate must agree in two of the most recent three reads.
-const SAMPLE_EVERY_MS = 260;
-const OCR_COOLDOWN_MS = 900;
-const STABLE_SAMPLES_REQUIRED = 3;
-const AGREEMENT_WINDOW = 3;
-const AGREEMENT_REQUIRED = 2;
+// Handheld-oriented cadence: let one clearly high-confidence, unambiguous
+// species reading act immediately. Temporal agreement is reserved for medium
+// evidence, where it meaningfully filters false positives without making a
+// bulk-card scan miss a card that is only held in view for 1–2 seconds.
+const SAMPLE_EVERY_MS = 240;
+const OCR_COOLDOWN_MS = 760;
+const STABLE_SAMPLES_REQUIRED = 2;
+const MEDIUM_AGREEMENT_WINDOW_MS = 3_200;
+const MEDIUM_AGREEMENT_REQUIRED = 2;
 
 interface SourceRect { x: number; y: number; width: number; height: number; }
 
@@ -186,7 +187,7 @@ export function useTitleOcr({
   const readingRef = useRef(false);
   const lastOcrAtRef = useRef(0);
   const initializedRef = useRef(false);
-  const agreementRef = useRef<string[]>([]);
+  const mediumEvidenceRef = useRef<Array<{ key: string; seenAt: number }>>([]);
   const lastEmittedKeyRef = useRef('');
 
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
@@ -225,21 +226,41 @@ export function useTitleOcr({
       }
 
       if (!species) {
-        agreementRef.current = [];
-        lastEmittedKeyRef.current = '';
+        // Do not erase recent medium-confidence evidence merely because a
+        // handheld frame was blurred or unreadable. Expire it by time instead.
+        const cutoff = Date.now() - MEDIUM_AGREEMENT_WINDOW_MS;
+        mediumEvidenceRef.current = mediumEvidenceRef.current.filter((entry) => entry.seenAt >= cutoff);
         onScanningRef.current();
         return;
       }
 
       const key = String(species.species.dex);
-      agreementRef.current = [...agreementRef.current, key].slice(-AGREEMENT_WINDOW);
-      const agreements = agreementRef.current.filter((candidate) => candidate === key).length;
-      if (agreements < AGREEMENT_REQUIRED) {
+      if (lastEmittedKeyRef.current === key) return;
+
+      // Exact/high lexicon matches already carry both a strong score and a
+      // runner-up margin. Once the frame has passed the lightweight stability
+      // gate, emit immediately so a handheld operator does not lose a card
+      // while waiting for an unnecessary second OCR pass.
+      if (species.confidence === 'high') {
+        lastEmittedKeyRef.current = key;
+        onResultRef.current({ rawText, displayText, ocrConfidence: result.confidence, crop: 'operator-zone', species });
+        return;
+      }
+
+      // Medium matches still need repeat evidence, but reads remain valid for a
+      // short handheld window rather than needing to be adjacent OCR samples.
+      const now = Date.now();
+      const cutoff = now - MEDIUM_AGREEMENT_WINDOW_MS;
+      mediumEvidenceRef.current = [
+        ...mediumEvidenceRef.current.filter((entry) => entry.seenAt >= cutoff),
+        { key, seenAt: now },
+      ];
+      const agreements = mediumEvidenceRef.current.filter((entry) => entry.key === key).length;
+      if (agreements < MEDIUM_AGREEMENT_REQUIRED) {
         onScanningRef.current();
         return;
       }
 
-      if (lastEmittedKeyRef.current === key) return;
       lastEmittedKeyRef.current = key;
       onResultRef.current({ rawText, displayText, ocrConfidence: result.confidence, crop: 'operator-zone', species });
     } catch {
@@ -256,7 +277,7 @@ export function useTitleOcr({
     if (!enabled) {
       previousSignatureRef.current = [];
       stableCountRef.current = 0;
-      agreementRef.current = [];
+      mediumEvidenceRef.current = [];
       lastEmittedKeyRef.current = '';
       initializedRef.current = false;
       setStatus('idle');
