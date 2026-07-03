@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Check, Eye, EyeOff, RotateCcw, ScanLine, X } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Check, Eye, EyeOff, ScanLine, X } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useTitleOcr, type ScanRecognition } from '../hooks/useTitleOcr';
 import { findWantedMatch } from '../lib/matching';
@@ -61,10 +61,9 @@ export function ScanScreen({
   onResolveHit: (term: string, action: 'remove' | 'keep' | 'reject') => void;
 }) {
   const { videoRef, error, isReady, start } = useCamera(settings.cameraDeviceId, true);
-  const scanSurfaceRef = useRef<HTMLElement>(null);
+  const scanSurfaceRef = useRef<HTMLDivElement>(null);
   const ocrTargetRef = useRef<HTMLDivElement>(null);
   const zoneDragRef = useRef<ZoneDrag | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [lastRead, setLastRead] = useState('');
   const [pendingRecognition, setPendingRecognition] = useState<ScanRecognition | null>(null);
   const [confirmedNote, setConfirmedNote] = useState('');
@@ -79,12 +78,6 @@ export function ScanScreen({
   const previewVisible = settings.showOcrDebug;
   const isFrozen = Boolean(frozen && match);
   const zone = settings.ocrZone ?? DEFAULT_OCR_ZONE;
-
-  useEffect(() => {
-    navigator.mediaDevices?.enumerateDevices()
-      .then((all) => setDevices(all.filter((device) => device.kind === 'videoinput')))
-      .catch(() => undefined);
-  }, [isReady]);
 
   const captureFrame = useCallback((): string | undefined => {
     const video = videoRef.current;
@@ -261,17 +254,18 @@ export function ScanScreen({
     ? `${frozen.speciesName} ${formatDexNumber(frozen.dex ?? 0)}`
     : match?.wantedTerm;
 
-  return <main ref={scanSurfaceRef} className="scan-screen">
-    <video ref={videoRef} className={isFrozen ? 'camera hidden' : 'camera'} muted playsInline autoPlay />
-    {frozen?.imageUrl && <img className="frozen-frame" src={frozen.imageUrl} alt="Frozen camera frame" />}
-    <div className="camera-vignette" />
+  return <main className="scan-screen">
+    <section ref={scanSurfaceRef} className="camera-stage" aria-label="Live card camera">
+      <video ref={videoRef} className={isFrozen ? 'camera hidden' : 'camera'} muted playsInline autoPlay />
+      {frozen?.imageUrl && <img className="frozen-frame" src={frozen.imageUrl} alt="Frozen camera frame" />}
+      <div className="camera-vignette" />
 
-    <header className="scan-header">
+      <header className="scan-header">
       <div className="brand"><span className="brand-mark">P</span><span className="brand-copy"><span className="brand-name">Pokedex Hunter</span><span className="build-marker">{APP_VERSION}</span></span></div>
       <span className="remaining-pill" aria-label="Wanted list count">{remainingLabel}</span>
-    </header>
+      </header>
 
-    <section className="operator-zone-stage" aria-label="Resizable OCR name scan area">
+      <section className="operator-zone-stage" aria-label="Resizable OCR name scan area">
       <div
         ref={ocrTargetRef}
         className={`operator-ocr-zone ${signal} ${isReading ? 'reading' : ''}`}
@@ -287,31 +281,21 @@ export function ScanScreen({
         <span className="zone-handle sw" data-zone-handle="sw" aria-hidden="true" />
         <span className="zone-handle se" data-zone-handle="se" aria-hidden="true" />
       </div>
+      </section>
+
+      {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
+      {error && <div className="permission-card"><p>{error}</p><button onClick={() => void start()}>Enable camera</button></div>}
     </section>
 
-    {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
-    {error && <div className="permission-card"><p>{error}</p><button onClick={() => void start()}>Enable camera</button></div>}
-
     {!isFrozen && <div className="scan-bottom-stack">
-      <section className="scan-control-dock" aria-label="Scan controls">
-        <p className="scan-mode-readout" aria-live="polite">{scanModeReadout}</p>
-        <div className="dock-row dock-primary-controls">
-          <button
-            className={`preview-toggle ${previewVisible ? 'active' : ''}`}
-            onClick={() => onSettingsChange({ ...settings, showOcrDebug: !previewVisible })}
-            aria-pressed={previewVisible}
-          >
-            {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview</span>
-          </button>
-          <button className="capture-now" onClick={() => void captureSample()}><ScanLine size={18} /> Capture</button>
-          <button
-            className={`auto-scan-toggle ${settings.autoScan ? 'active' : ''}`}
-            onClick={() => onSettingsChange({ ...settings, autoScan: !settings.autoScan })}
-            aria-pressed={settings.autoScan}
-          >
-            <ScanLine size={17} /><span>Auto {settings.autoScan ? 'On' : 'Off'}</span>
-          </button>
-        </div>
+      <section className="ocr-preview-control" aria-label="OCR Preview control">
+        <button
+          className={`preview-toggle ${previewVisible ? 'active' : ''}`}
+          onClick={() => onSettingsChange({ ...settings, showOcrDebug: !previewVisible })}
+          aria-pressed={previewVisible}
+        >
+          {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview {previewVisible ? 'On' : 'Off'}</span>
+        </button>
       </section>
 
       {previewVisible && <section className="ocr-preview-panel">
@@ -334,6 +318,20 @@ export function ScanScreen({
         </div>
       </section>}
 
+      <section className="scan-control-dock" aria-label="Scan mode controls">
+        <p className="scan-mode-readout" aria-live="polite">{scanModeReadout}</p>
+        <div className="dock-row dock-scan-mode-controls">
+          <button className="capture-now" onClick={() => void captureSample()}><ScanLine size={19} /> Capture</button>
+          <button
+            className={`auto-scan-toggle ${settings.autoScan ? 'active' : ''}`}
+            onClick={() => onSettingsChange({ ...settings, autoScan: !settings.autoScan })}
+            aria-pressed={settings.autoScan}
+          >
+            <ScanLine size={17} /><span>Auto {settings.autoScan ? 'On' : 'Off'}</span>
+          </button>
+        </div>
+      </section>
+
       {pendingRecognition && <section className="confirmation-strip" aria-live="polite">
         <span>Confirm this read</span>
         <button className="confirm-read" onClick={confirmRecognition}><Check size={16} /> Yes</button>
@@ -355,22 +353,6 @@ export function ScanScreen({
       </section>
       {manualFeedback && <p className="scan-note">{manualFeedback}</p>}
 
-      <details className="scan-tools">
-        <summary>Scan tools</summary>
-        <div className="scan-tools-content">
-          <button
-            className="reset-zone"
-            onClick={() => onSettingsChange({ ...settings, showOcrDebug: true, autoScan: true, ocrZone: DEFAULT_OCR_ZONE })}
-          ><RotateCcw size={16} /> Reset scan setup</button>
-          <label className="camera-picker-label">
-            <span>Camera</span>
-            <select value={settings.cameraDeviceId} onChange={(event) => onSettingsChange({ ...settings, cameraDeviceId: event.target.value })} aria-label="Camera">
-              <option value="">Rear camera (preferred)</option>
-              {devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Camera'}</option>)}
-            </select>
-          </label>
-        </div>
-      </details>
     </div>}
 
     {isFrozen && match && <div className="hit-sheet" role="dialog" aria-modal="true" aria-label="Possible match">

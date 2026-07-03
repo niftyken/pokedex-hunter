@@ -2,7 +2,7 @@
 
 **Pokedex Hunter** is a camera-first React + Vite Progressive Web App for finding physical English Pokémon cards that match a locally stored Wanted List. It is intended for bulk-card searching on iPhone and Android, with all lists and settings retained locally in browser storage.
 
-Current release: **v0.7.0**.
+Current release: **v0.7.1**.
 
 ## Current capabilities
 
@@ -18,7 +18,7 @@ Current release: **v0.7.0**.
 - **Green / yellow workflow:** Strong Wanted List matches open a green hit sheet. A medium candidate stays yellow until the operator confirms it. The hit sheet presents the canonical species and its Pokédex number, followed by **Remove from List**, **Keep on List**, and **Reject**.
 - **Manual name check:** Enter any Pokémon name manually. A Wanted List match follows the same green-alert workflow as OCR.
 - **Wanted List workflow:** One search term per line; blanks and duplicates are ignored. First-time installations receive the bundled default 392-Pokémon list, and existing users can load it from Wanted List at any time.
-- **Scanning-first layout:** The main Scan screen keeps the friendly recognition status, **OCR Preview**, **Capture**, **Auto On/Off**, the crop image/raw OCR diagnostics, and manual name check visible during a session. Capture is centered and intentionally larger for either-thumb access. Less-frequent camera selection and recovery actions live under **Scan tools**. **Reset scan setup** restores the default OCR region, turns OCR Preview on, and turns Auto Scanning on. There is no separate Settings screen.
+- **Scanning-first layout:** The Scan screen prioritizes an unobstructed live camera area, then presents controls below it in this order: **OCR Preview**, **Scan Mode** (Capture and Auto On/Off), and the manual name check. The crop image and raw OCR diagnostics remain visible whenever OCR Preview is enabled. Camera selection and recovery actions live on the dedicated **Scan Tools** tab. **Reset scan setup** restores the default OCR region, turns OCR Preview on, and turns Auto Scanning on. There is no separate Settings screen.
 - **Visible build marker:** The Scan header displays the release version, which should be checked before evaluating a new Vercel deployment.
 - **PWA cache revisioning:** The service worker cache is versioned per release to reduce stale app-shell problems after deployment.
 
@@ -48,7 +48,7 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 4. With **Auto On**, hold the card reasonably steady; the app prefers a briefly stable frame but also forces an attempt after a short wait in difficult handheld lighting. Press the centered **Capture** button at any time to scan the current frame immediately. With Auto Off, Capture is the normal scanning action.
 5. Use **OCR Preview** to inspect the processed crop, raw OCR, and canonical candidate. Use the manual field to check any name directly.
 6. A strong Wanted List match opens the green sheet. A yellow `?` candidate can be confirmed manually.
-7. Use **Remove from List**, **Keep on List**, or **Reject** to resume scanning. Open **Scan tools** only when changing camera or resetting the scan setup.
+7. Use **Remove from List**, **Keep on List**, or **Reject** to resume scanning. Open the **Scan Tools** tab only when changing camera or resetting the scan setup.
 
 ## Data and privacy model
 
@@ -59,9 +59,10 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 ## Project structure
 
 - `src/App.tsx` — screen routing and local persistence.
-- `src/components/ScanScreen.tsx` — live camera UI, status messaging, OCR-zone controls, active scan controls, manual checks, Scan tools, confirmation, and green hit sheet.
+- `src/components/ScanScreen.tsx` — live camera UI, status messaging, OCR-zone controls, OCR Preview, scan-mode controls, manual checks, confirmation, and green hit sheet.
+- `src/components/ScanToolsScreen.tsx` — camera selection and reset of the full scan setup.
 - `src/components/WantedListScreen.tsx` — multiline list editor and default-list loader.
-- `src/components/BottomNav.tsx` — Scan / Wanted List navigation.
+- `src/components/BottomNav.tsx` — Scan / Wanted List / Scan Tools navigation.
 - `src/hooks/useCamera.ts` — `getUserMedia` lifecycle and camera teardown.
 - `src/hooks/useTitleOcr.ts` — crop mapping, preprocessing, forgiving auto-scan gating, manual Capture override, temporal agreement, and preview state.
 - `src/lib/ocr.ts` — Tesseract.js worker integration.

@@ -1,4 +1,4 @@
-export type Screen = 'scan' | 'wanted';
+export type Screen = 'scan' | 'wanted' | 'tools';
 export type Signal = 'idle' | 'yellow' | 'green';
 export type OcrStatus = 'idle' | 'warming' | 'ready' | 'reading';
 
