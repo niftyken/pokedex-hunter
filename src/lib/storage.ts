@@ -4,13 +4,13 @@ import type { AppSettings, OcrZone } from '../types';
 const WANTED_KEY = 'pokedex-hunter:wanted-list:v1';
 const SETTINGS_KEY = 'pokedex-hunter:settings:v1';
 
-// A deliberately shallow default name strip. The operator can still resize it,
-// but this avoids capturing HP, evolution text, borders, and attack rules.
+// A compact but readable default name strip. The operator can still resize it;
+// this leaves useful card context while avoiding most HP, border, and attack text.
 export const DEFAULT_OCR_ZONE: OcrZone = {
   x: 10,
-  y: 22.5,
+  y: 21.5,
   width: 80,
-  height: 8.5,
+  height: 10,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

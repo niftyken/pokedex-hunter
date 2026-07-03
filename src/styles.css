@@ -151,3 +151,33 @@ button { cursor: pointer; }
   .capture-now { font-size: .75rem; }
   .ocr-preview-details { gap: 5px; }
 }
+
+
+/* v0.7.3: restore useful card context while keeping every Scan control within a single modern iPhone viewport. */
+.scan-screen {
+  height: calc(100svh - 76px - env(safe-area-inset-bottom));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.camera-stage {
+  flex: 0 0 clamp(292px, 38svh, 344px);
+  height: auto;
+}
+.preview-closed .camera-stage {
+  flex-basis: clamp(340px, 47svh, 420px);
+  height: auto;
+}
+.scan-bottom-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: end;
+  padding: 8px 10px 10px;
+}
+@media (max-height: 760px) {
+  .camera-stage { flex-basis: clamp(250px, 35svh, 292px); }
+  .preview-closed .camera-stage { flex-basis: clamp(300px, 43svh, 350px); }
+  .scan-bottom-stack { padding-top: 6px; padding-bottom: 7px; }
+}
