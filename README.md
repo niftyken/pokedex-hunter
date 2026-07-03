@@ -2,6 +2,8 @@
 
 **Pokedex Hunter** is a camera-first React + Vite Progressive Web App for finding physical English Pokémon cards that match a locally stored Wanted List. It is intended for bulk-card searching on iPhone and Android, with all lists and settings retained locally in browser storage.
 
+Current release: **v0.7.0**.
+
 ## Current capabilities
 
 - **Live camera scanning:** The rear camera is requested automatically on Scan. The stream is released whenever you switch to Wanted List, conserving battery and preventing background camera activity.
@@ -10,13 +12,13 @@
 - **OCR Preview:** The on-screen OCR Preview shows the processed crop, raw OCR, canonical species candidate, confidence, and runner-up. It remains available from Scan and is enabled by default for testing.
 - **Focused preprocessing:** Before OCR, the app trims a small inner margin around the visible box, enlarges the crop, applies grayscale/local contrast normalization, and suppresses nearly full-width dark rules that commonly arise from card frames.
 - **Auto Scanning and Capture:** Auto Scanning is enabled by default. It uses a forgiving handheld stability check, a shorter OCR cooldown, and a forced attempt roughly every 1.35 seconds so low-light hand movement cannot make the scanner wait indefinitely. Turn Auto Scanning off to scan only when you press **Capture**. Capture is always available, even when OCR Preview is hidden, and immediately requests OCR for the current frame (unless an OCR job is already running).
-- **Clean status behavior:** Nonsense or ambiguous OCR is represented on the primary screen as **`Read: Scanning…`**, not as a misleading raw string. Diagnostic raw text remains in OCR Preview.
+- **Friendly scan status:** The primary status explains what the scanner is doing: **`Scanning for Pokémon names…`** when it is intentionally ignoring non-name text, **`Found a Charmander.`** for a recognized species that is not necessarily wanted, and **`Is that a Charmander?`** for a medium-confidence candidate that needs confirmation. Diagnostic raw text remains in OCR Preview.
 - **Pokémon species recognition:** OCR is constrained against a bundled English National Dex list. Card metadata such as **Basic** is excluded from recognition scoring, including common one-character OCR damage such as `asic` or `baslc`, so it does not compete with the Pokémon name. Common punctuation is normalized. A bare **Nidoran** is considered only when exactly one Nidoran form remains on the Wanted List, and it always requires confirmation.
 - **Fixed matching policy:** The former Sensitivity setting was removed. Rather than exposing several opaque thresholds, the app uses a consistent handheld policy: a high-confidence canonical read can immediately trigger a Wanted List hit, while medium evidence needs repeat agreement and operator confirmation where appropriate. Wanted List matching is canonical and exact, so **Mew** never matches **Mewtwo**, **Latias** never matches **Latios**, and the two Nidoran forms never match each other.
 - **Green / yellow workflow:** Strong Wanted List matches open a green hit sheet. A medium candidate stays yellow until the operator confirms it. The hit sheet presents the canonical species and its Pokédex number, followed by **Remove from List**, **Keep on List**, and **Reject**.
 - **Manual name check:** Enter any Pokémon name manually. A Wanted List match follows the same green-alert workflow as OCR.
 - **Wanted List workflow:** One search term per line; blanks and duplicates are ignored. First-time installations receive the bundled default 392-Pokémon list, and existing users can load it from Wanted List at any time.
-- **In-app controls:** OCR Preview, **Auto Scanning**, **Capture**, OCR-region reset, and camera selection are available directly on Scan. The Scan mode readout explains whether Auto is waiting for a stable picture, reading a card, or Tap Capture mode is active. Reset restores the default OCR region and turns Auto Scanning back on. There is no separate Settings screen.
+- **Scanning-first layout:** The main Scan screen keeps the friendly recognition status, **OCR Preview**, **Capture**, **Auto On/Off**, the crop image/raw OCR diagnostics, and manual name check visible during a session. Capture is centered and intentionally larger for either-thumb access. Less-frequent camera selection and recovery actions live under **Scan tools**. **Reset scan setup** restores the default OCR region, turns OCR Preview on, and turns Auto Scanning on. There is no separate Settings screen.
 - **Visible build marker:** The Scan header displays the release version, which should be checked before evaluating a new Vercel deployment.
 - **PWA cache revisioning:** The service worker cache is versioned per release to reduce stale app-shell problems after deployment.
 
@@ -40,12 +42,13 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 
 ## Main scanning flow
 
-1. Open **Scan**; camera starts automatically.
+1. Open **Scan**; camera starts automatically. The header displays **Wanted List: _n_** and the visible release version.
 2. Move or resize **SCAN POKÉMON NAME HERE** so the printed name sits inside it. Keep unrelated text, especially **Basic**, HP, and border lines, outside the box when practical.
-3. With **Auto Scanning On**, hold the card reasonably steady; the app prefers a briefly stable frame but also forces an attempt after a short wait in difficult handheld lighting. With Auto Scanning Off, press **Capture** when the name is framed. Capture works regardless of OCR Preview visibility.
-4. Use **OCR Preview** to inspect the processed crop if recognition is not behaving as expected.
-5. A strong Wanted List match opens the green sheet. A yellow `?` candidate can be confirmed manually.
-6. Use **Remove from List**, **Keep on List**, or **Reject** to resume scanning. Use the manual field to check any name directly.
+3. Watch the status line: **Scanning for Pokémon names…** means no usable species has been recognized yet; **Found a [name].** confirms OCR recognition even when that species is not wanted; **Is that a [name]?** asks for confirmation of a medium-confidence candidate.
+4. With **Auto On**, hold the card reasonably steady; the app prefers a briefly stable frame but also forces an attempt after a short wait in difficult handheld lighting. Press the centered **Capture** button at any time to scan the current frame immediately. With Auto Off, Capture is the normal scanning action.
+5. Use **OCR Preview** to inspect the processed crop, raw OCR, and canonical candidate. Use the manual field to check any name directly.
+6. A strong Wanted List match opens the green sheet. A yellow `?` candidate can be confirmed manually.
+7. Use **Remove from List**, **Keep on List**, or **Reject** to resume scanning. Open **Scan tools** only when changing camera or resetting the scan setup.
 
 ## Data and privacy model
 
@@ -56,7 +59,7 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 ## Project structure
 
 - `src/App.tsx` — screen routing and local persistence.
-- `src/components/ScanScreen.tsx` — live camera UI, OCR-zone controls, manual checks, confirmation, and green hit sheet.
+- `src/components/ScanScreen.tsx` — live camera UI, status messaging, OCR-zone controls, active scan controls, manual checks, Scan tools, confirmation, and green hit sheet.
 - `src/components/WantedListScreen.tsx` — multiline list editor and default-list loader.
 - `src/components/BottomNav.tsx` — Scan / Wanted List navigation.
 - `src/hooks/useCamera.ts` — `getUserMedia` lifecycle and camera teardown.

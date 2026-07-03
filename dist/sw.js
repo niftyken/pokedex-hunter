@@ -1,6 +1,6 @@
 // Bump alongside each shipped UI revision so a deployed app does not keep
 // serving a stale cached index.html after Vercel has published a new build.
-const CACHE = 'pokedex-hunter-shell-v10';
+const CACHE = 'pokedex-hunter-shell-v11';
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/'])));
   self.skipWaiting();
