@@ -311,7 +311,7 @@ export function ScanScreen({
           value={manualName}
           onChange={(event) => { setManualName(event.target.value); setManualFeedback(''); }}
           onKeyDown={(event) => { if (event.key === 'Enter') submitManualName(); }}
-          placeholder="Type a Pokémon name if OCR misses it"
+          placeholder="Check a Pokémon name"
           autoCapitalize="words"
           spellCheck="false"
         />
@@ -327,7 +327,7 @@ export function ScanScreen({
             onClick={() => onSettingsChange({ ...settings, showOcrDebug: !previewVisible })}
             aria-pressed={previewVisible}
           >
-            {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>Preview</span>
+            {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview</span>
           </button>
           <div className="sensitivity-control" aria-label="Match sensitivity">
             <span>Sensitivity</span>
