@@ -6,7 +6,7 @@ import { findWantedMatch } from '../lib/matching';
 import { APP_VERSION } from '../lib/appMeta';
 import { formatDexNumber, resolvePokemonRecognition } from '../lib/species';
 import { DEFAULT_OCR_ZONE } from '../lib/storage';
-import type { AppSettings, FrozenFrame, MatchResult, OcrZone, Sensitivity, Signal } from '../types';
+import type { AppSettings, FrozenFrame, MatchResult, OcrZone, Signal } from '../types';
 
 const POST_ACTION_COOLDOWN_MS = 1_600;
 const MIN_ZONE_WIDTH = 20;
@@ -20,12 +20,6 @@ interface ZoneDrag {
   startY: number;
   zone: OcrZone;
 }
-
-const sensitivityLabels: Record<Sensitivity, string> = {
-  conservative: '1',
-  balanced: '2',
-  sensitive: '3',
-};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -133,7 +127,7 @@ export function ScanScreen({
     const matchEvidence = recognition.species
       ? (recognition.species.confidence === 'high' ? 100 : 0)
       : recognition.ocrConfidence;
-    const nextMatch = findWantedMatch(canonicalTitle, wantedList, settings.sensitivity, matchEvidence);
+    const nextMatch = findWantedMatch(canonicalTitle, wantedList, matchEvidence);
 
     // A medium lexicon recognition, or any weak wanted-list read, needs the operator's
     // explicit confirmation. No automatic second-pass guessing is required.
@@ -146,20 +140,31 @@ export function ScanScreen({
     setPendingRecognition(null);
     if (nextMatch) openHit(nextMatch, recognition);
     else setSignal('idle');
-  }, [frozen, openHit, settings.sensitivity, wantedList]);
+  }, [frozen, openHit, wantedList]);
+
+  const handleScanning = useCallback(() => {
+    // Do not erase a yellow operator-confirmation prompt while the next frame is
+    // being evaluated. Otherwise a nonsense frame could make the prompt vanish.
+    if (!pendingRecognition && !frozen && Date.now() >= ignoreResultsUntilRef.current) {
+      setLastRead('');
+      setSignal('idle');
+    }
+  }, [frozen, pendingRecognition]);
 
   const { status: ocrStatus, preview, captureSample } = useTitleOcr({
     videoRef,
     cropTargetRef: ocrTargetRef,
     enabled: isReady && !isFrozen,
     previewEnabled: previewVisible,
+    preferredNames: wantedList,
     onResult: evaluateRecognition,
+    onScanning: handleScanning,
   });
 
   const confirmRecognition = useCallback(() => {
     if (!pendingRecognition) return;
     const canonicalTitle = pendingRecognition.species?.species.name ?? pendingRecognition.rawText;
-    const nextMatch = findWantedMatch(canonicalTitle, wantedList, settings.sensitivity, 100);
+    const nextMatch = findWantedMatch(canonicalTitle, wantedList, 100);
     if (nextMatch) {
       const confirmed = {
         ...pendingRecognition,
@@ -175,7 +180,7 @@ export function ScanScreen({
     setPendingRecognition(null);
     setConfirmedNote('Confirmed — not on Wanted List');
     ignoreResultsUntilRef.current = Date.now() + 900;
-  }, [openHit, pendingRecognition, settings.sensitivity, wantedList]);
+  }, [openHit, pendingRecognition, wantedList]);
 
   const clearRead = useCallback(() => {
     ignoreResultsUntilRef.current = Date.now() + 700;
@@ -188,7 +193,7 @@ export function ScanScreen({
   const submitManualName = useCallback(() => {
     const typed = manualName.trim();
     if (!typed) return;
-    const species = resolvePokemonRecognition(typed);
+    const species = resolvePokemonRecognition(typed, wantedList);
     const displayText = species
       ? `${species.species.name} ${formatDexNumber(species.species.dex)}`
       : typed;
@@ -199,7 +204,7 @@ export function ScanScreen({
       crop: 'operator-zone',
       species: species ?? undefined,
     };
-    const nextMatch = findWantedMatch(species?.species.name ?? typed, wantedList, settings.sensitivity, 100);
+    const nextMatch = findWantedMatch(species?.species.name ?? typed, wantedList, 100);
     setLastRead(displayText);
     setPendingRecognition(null);
     setManualFeedback('');
@@ -209,7 +214,7 @@ export function ScanScreen({
     }
     setSignal('idle');
     setManualFeedback(`${displayText} is not on your Wanted List.`);
-  }, [manualName, openHit, settings.sensitivity, wantedList]);
+  }, [manualName, openHit, wantedList]);
 
   const clearManualName = useCallback(() => {
     setManualName('');
@@ -274,7 +279,7 @@ export function ScanScreen({
       </div>
     </section>
 
-    {lastRead && !isFrozen && <div className="read-pill">Read: <strong>{lastRead}</strong></div>}
+    {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`}>Read: <strong>{lastRead || 'Scanning…'}</strong></div>}
     {error && <div className="permission-card"><p>{error}</p><button onClick={() => void start()}>Enable camera</button></div>}
 
     {!isFrozen && <div className="scan-bottom-stack">
@@ -288,7 +293,7 @@ export function ScanScreen({
         </div>
         <div className="ocr-preview-body">
           <div className="ocr-preview-image">
-            {preview ? <img src={preview.imageUrl} alt="Current OCR crop" /> : <div className="ocr-debug-placeholder">Aim the printed name inside the box</div>}
+            {preview ? <img src={preview.imageUrl} alt="Current OCR crop" /> : <div className="ocr-debug-placeholder">Waiting for a current crop</div>}
           </div>
           <div className="ocr-preview-details">
             <p className="ocr-preview-read">{preview?.canonicalText ?? 'Waiting for a stable read'}</p>
@@ -329,10 +334,6 @@ export function ScanScreen({
           >
             {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview</span>
           </button>
-          <div className="sensitivity-control" aria-label="Match sensitivity">
-            <span>Sensitivity</span>
-            {(['conservative', 'balanced', 'sensitive'] as Sensitivity[]).map((value) => <button key={value} className={settings.sensitivity === value ? 'selected' : ''} onClick={() => onSettingsChange({ ...settings, sensitivity: value })} aria-label={`${value} sensitivity`}>{sensitivityLabels[value]}</button>)}
-          </div>
           <button className="reset-zone" onClick={() => onSettingsChange({ ...settings, ocrZone: DEFAULT_OCR_ZONE })}><RotateCcw size={16} /> Reset</button>
         </div>
         <select value={settings.cameraDeviceId} onChange={(event) => onSettingsChange({ ...settings, cameraDeviceId: event.target.value })} aria-label="Camera">

@@ -3,16 +3,16 @@ import { resolvePokemonRecognition, formatDexNumber, type PokemonRecognition } f
 import { TesseractOcrAdapter } from '../lib/ocr';
 import type { OcrStatus } from '../types';
 
-const SAMPLE_EVERY_MS = 240;
-const OCR_COOLDOWN_MS = 1_050;
-const STABLE_SAMPLES_REQUIRED = 4;
+// Handheld-oriented cadence: the camera is sampled frequently enough to notice
+// when a card settles, but costly OCR is attempted no more than about once per
+// 0.9 seconds. A candidate must agree in two of the most recent three reads.
+const SAMPLE_EVERY_MS = 260;
+const OCR_COOLDOWN_MS = 900;
+const STABLE_SAMPLES_REQUIRED = 3;
+const AGREEMENT_WINDOW = 3;
+const AGREEMENT_REQUIRED = 2;
 
-interface SourceRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+interface SourceRect { x: number; y: number; width: number; height: number; }
 
 export interface ScanRecognition {
   rawText: string;
@@ -35,19 +35,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/**
- * Maps the visible operator-controlled OCR rectangle into raw camera pixels.
- * This deliberately makes no assumptions about a card's border, era, or layout.
- */
 function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): SourceRect | null {
   if (!video.videoWidth || !video.videoHeight) return null;
-
   const videoRect = video.getBoundingClientRect();
   const sourceWidth = video.videoWidth;
   const sourceHeight = video.videoHeight;
   const boxRatio = videoRect.width / videoRect.height;
   const videoRatio = sourceWidth / sourceHeight;
-
   let renderedWidth = videoRect.width;
   let renderedHeight = videoRect.height;
   let offsetX = 0;
@@ -67,7 +61,6 @@ function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): So
   const y = ((targetRect.top - videoRect.top - offsetY) / renderedHeight) * sourceHeight;
   const width = (targetRect.width / renderedWidth) * sourceWidth;
   const height = (targetRect.height / renderedHeight) * sourceHeight;
-
   const clampedX = clamp(x, 0, sourceWidth - 1);
   const clampedY = clamp(y, 0, sourceHeight - 1);
   return {
@@ -78,28 +71,53 @@ function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): So
   };
 }
 
+function trimInnerEdges(rect: SourceRect): SourceRect {
+  // Exclude a small safety margin so the scan box may visibly touch a card's
+  // frame without feeding its border lines directly into Tesseract.
+  const insetX = rect.width * 0.028;
+  const insetY = rect.height * 0.11;
+  return {
+    x: rect.x + insetX,
+    y: rect.y + insetY,
+    width: Math.max(1, rect.width - insetX * 2),
+    height: Math.max(1, rect.height - insetY * 2),
+  };
+}
+
 function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return canvas;
-
   const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = image.data;
+  const { data } = image;
+  const luma = new Uint8Array(canvas.width * canvas.height);
   let total = 0;
-  const luminances: number[] = [];
 
-  for (let index = 0; index < data.length; index += 4) {
-    const luminance = 0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2];
-    luminances.push(luminance);
-    total += luminance;
+  for (let pixel = 0, index = 0; index < data.length; index += 4, pixel += 1) {
+    const value = Math.round(0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2]);
+    luma[pixel] = value;
+    total += value;
   }
 
-  const mean = total / luminances.length;
-  for (let index = 0, sampleIndex = 0; index < data.length; index += 4, sampleIndex += 1) {
-    const normalized = clamp((luminances[sampleIndex] - mean) * 2.15 + 128, 0, 255);
+  const mean = total / luma.length;
+  for (let pixel = 0, index = 0; index < data.length; index += 4, pixel += 1) {
+    const normalized = clamp(Math.round((luma[pixel] - mean) * 2.85 + 132), 0, 255);
     data[index] = normalized;
     data[index + 1] = normalized;
     data[index + 2] = normalized;
     data[index + 3] = 255;
+  }
+
+  // Remove only nearly full-width dark rows. These are commonly card rules or
+  // borders; actual letter rows never occupy most of a wide name strip.
+  for (let y = 0; y < canvas.height; y += 1) {
+    let dark = 0;
+    for (let x = 0; x < canvas.width; x += 1) if (data[(y * canvas.width + x) * 4] < 72) dark += 1;
+    if (dark / canvas.width > 0.74) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const index = (y * canvas.width + x) * 4;
+        data[index] = 255; data[index + 1] = 255; data[index + 2] = 255;
+      }
+    }
   }
 
   ctx.putImageData(image, 0, 0);
@@ -107,16 +125,15 @@ function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 function getOperatorCrop(video: HTMLVideoElement, targetElement: HTMLElement): HTMLCanvasElement | null {
-  const rect = mapElementRectToVideo(video, targetElement.getBoundingClientRect());
-  if (!rect) return null;
-
+  const mapped = mapElementRectToVideo(video, targetElement.getBoundingClientRect());
+  if (!mapped) return null;
+  const rect = trimInnerEdges(mapped);
   const scale = 4;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(320, Math.round(rect.width * scale));
-  canvas.height = Math.max(84, Math.round(rect.height * scale));
+  canvas.width = Math.max(360, Math.round(rect.width * scale));
+  canvas.height = Math.max(72, Math.round(rect.height * scale));
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(video, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
   return preprocessCanvas(canvas);
@@ -124,8 +141,7 @@ function getOperatorCrop(video: HTMLVideoElement, targetElement: HTMLElement): H
 
 function sampleSignature(canvas: HTMLCanvasElement): number[] {
   const sample = document.createElement('canvas');
-  sample.width = 24;
-  sample.height = 8;
+  sample.width = 24; sample.height = 8;
   const ctx = sample.getContext('2d', { willReadFrequently: true });
   if (!ctx) return [];
   ctx.drawImage(canvas, 0, 0, sample.width, sample.height);
@@ -147,46 +163,53 @@ export function useTitleOcr({
   cropTargetRef,
   enabled,
   previewEnabled,
+  preferredNames,
   onResult,
+  onScanning,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   cropTargetRef: RefObject<HTMLElement | null>;
   enabled: boolean;
   previewEnabled: boolean;
+  preferredNames: readonly string[];
   onResult: (result: ScanRecognition) => void;
+  onScanning: () => void;
 }) {
   const [status, setStatus] = useState<OcrStatus>('idle');
   const [preview, setPreview] = useState<OcrPreview | null>(null);
   const onResultRef = useRef(onResult);
+  const onScanningRef = useRef(onScanning);
+  const preferredNamesRef = useRef(preferredNames);
   const adapterRef = useRef<TesseractOcrAdapter | null>(null);
   const previousSignatureRef = useRef<number[]>([]);
   const stableCountRef = useRef(0);
   const readingRef = useRef(false);
   const lastOcrAtRef = useRef(0);
   const initializedRef = useRef(false);
+  const agreementRef = useRef<string[]>([]);
+  const lastEmittedKeyRef = useRef('');
 
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
+  useEffect(() => { onScanningRef.current = onScanning; }, [onScanning]);
+  useEffect(() => { preferredNamesRef.current = preferredNames; }, [preferredNames]);
 
   const runRecognition = useCallback(async () => {
     const video = videoRef.current;
     const cropTarget = cropTargetRef.current;
     const adapter = adapterRef.current;
     if (!video || !cropTarget || !adapter || readingRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-
     const crop = getOperatorCrop(video, cropTarget);
     if (!crop) return;
 
     readingRef.current = true;
     setStatus(initializedRef.current ? 'reading' : 'warming');
-
     try {
       const result = await adapter.readTitle(crop);
       const rawText = result.text.trim();
-      const species = rawText ? resolvePokemonRecognition(rawText) : null;
+      const species = rawText ? resolvePokemonRecognition(rawText, preferredNamesRef.current) : null;
       const displayText = species
         ? `${species.species.name} ${formatDexNumber(species.species.dex)}${species.confidence === 'medium' ? ' ?' : ''}`
-        : rawText;
-
+        : '';
       initializedRef.current = true;
       setStatus('ready');
 
@@ -197,24 +220,32 @@ export function useTitleOcr({
           canonicalText: species ? displayText : undefined,
           ocrConfidence: result.confidence,
           speciesScore: species?.score,
-          runnerUp: species?.runnerUp
-            ? `${species.runnerUp.name} (${Math.round(species.runnerUpScore * 100)}%)`
-            : undefined,
+          runnerUp: species?.runnerUp ? `${species.runnerUp.name} (${Math.round(species.runnerUpScore * 100)}%)` : undefined,
         });
       }
 
-      if (rawText) {
-        onResultRef.current({
-          rawText,
-          displayText,
-          ocrConfidence: result.confidence,
-          crop: 'operator-zone',
-          species: species ?? undefined,
-        });
+      if (!species) {
+        agreementRef.current = [];
+        lastEmittedKeyRef.current = '';
+        onScanningRef.current();
+        return;
       }
+
+      const key = String(species.species.dex);
+      agreementRef.current = [...agreementRef.current, key].slice(-AGREEMENT_WINDOW);
+      const agreements = agreementRef.current.filter((candidate) => candidate === key).length;
+      if (agreements < AGREEMENT_REQUIRED) {
+        onScanningRef.current();
+        return;
+      }
+
+      if (lastEmittedKeyRef.current === key) return;
+      lastEmittedKeyRef.current = key;
+      onResultRef.current({ rawText, displayText, ocrConfidence: result.confidence, crop: 'operator-zone', species });
     } catch {
       initializedRef.current = true;
       setStatus('ready');
+      onScanningRef.current();
     } finally {
       readingRef.current = false;
       lastOcrAtRef.current = Date.now();
@@ -225,6 +256,8 @@ export function useTitleOcr({
     if (!enabled) {
       previousSignatureRef.current = [];
       stableCountRef.current = 0;
+      agreementRef.current = [];
+      lastEmittedKeyRef.current = '';
       initializedRef.current = false;
       setStatus('idle');
       return;
@@ -233,20 +266,15 @@ export function useTitleOcr({
     const adapter = new TesseractOcrAdapter();
     adapterRef.current = adapter;
     let cancelled = false;
-
     const timer = window.setInterval(() => {
       const video = videoRef.current;
       const cropTarget = cropTargetRef.current;
       if (cancelled || readingRef.current || !video || !cropTarget || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-
       const crop = getOperatorCrop(video, cropTarget);
       if (!crop) return;
       const signature = sampleSignature(crop);
-      stableCountRef.current = isSimilarFrame(previousSignatureRef.current, signature)
-        ? stableCountRef.current + 1
-        : 0;
+      stableCountRef.current = isSimilarFrame(previousSignatureRef.current, signature) ? stableCountRef.current + 1 : 0;
       previousSignatureRef.current = signature;
-
       const now = Date.now();
       if (stableCountRef.current < STABLE_SAMPLES_REQUIRED || now - lastOcrAtRef.current < OCR_COOLDOWN_MS) return;
       void runRecognition();
@@ -261,9 +289,6 @@ export function useTitleOcr({
     };
   }, [cropTargetRef, enabled, runRecognition, videoRef]);
 
-  useEffect(() => {
-    if (!previewEnabled) setPreview(null);
-  }, [previewEnabled]);
-
+  useEffect(() => { if (!previewEnabled) setPreview(null); }, [previewEnabled]);
   return { status, preview, captureSample: runRecognition };
 }

@@ -1,5 +1,4 @@
 export type Screen = 'scan' | 'wanted';
-export type Sensitivity = 'conservative' | 'balanced' | 'sensitive';
 export type Signal = 'idle' | 'yellow' | 'green';
 export type OcrStatus = 'idle' | 'warming' | 'ready' | 'reading';
 
@@ -12,7 +11,6 @@ export interface OcrZone {
 }
 
 export interface AppSettings {
-  sensitivity: Sensitivity;
   cameraDeviceId: string;
   /** Persisted from the Scan screen's Preview toggle. */
   showOcrDebug: boolean;

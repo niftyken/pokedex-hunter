@@ -1,7 +1,9 @@
-import type { MatchResult, Sensitivity } from '../types';
+import type { MatchResult } from '../types';
 
-// This intentionally stays understandable: normalize typography/noisy modifiers,
-// then look for a wanted Pokémon name in the card title.
+// Normalization is still useful for typography and familiar card-name variants,
+// but matching is deliberately identity-based. Once OCR has resolved a canonical
+// Pokémon species, a Wanted List hit must be that same species — never a prefix
+// or a merely similar spelling.
 const SUFFIXES = /\b(?:ex|gx|v|max|vmax|vstar|break|lv\.?x|legend)\b/gi;
 const PREFIXES = /^(?:(?:alolan|galarian|hisuian|paldean|radiant|shining|amazing|mega)\s+|m\s+|(?:blaine|misty|brock|erika|giovanni|rocket|n|team magma|team aqua)['’]s\s+)*/i;
 
@@ -33,56 +35,31 @@ export function parseWantedList(raw: string): string[] {
   return items;
 }
 
-function tokenContains(title: string, term: string): boolean {
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, 'i').test(title);
-}
-
-function similarity(a: string, b: string): number {
-  if (!a || !b) return 0;
-  if (a.includes(b)) return 1;
-  const aTokens = new Set(a.split(' '));
-  const bTokens = b.split(' ');
-  return bTokens.filter((token) => aTokens.has(token)).length / bTokens.length;
-}
-
-// Tesseract's confidence applies to the *whole* title crop. A clear wanted
-// name followed by noisy HP/type text can have a lower global confidence even
-// though the wanted-term token itself is reliable. Direct matches therefore
-// use a lower immediate-green threshold; weaker direct reads need a second
-// stable confirmation in ScanScreen.
-function directGreenThreshold(sensitivity: Sensitivity): number {
-  return sensitivity === 'conservative' ? 58 : sensitivity === 'balanced' ? 34 : 18;
-}
-
+/**
+ * Compares canonical identities only. This intentionally prevents root and
+ * near-spelling collisions such as Mew ↔ Mewtwo, Latias ↔ Latios, and
+ * Nidoran♀ ↔ Nidoran♂. A low-evidence canonical recognition stays yellow;
+ * it never becomes a match merely because a shorter wanted name is contained
+ * inside it.
+ */
 export function findWantedMatch(
   recognizedTitle: string,
   wantedList: string[],
-  sensitivity: Sensitivity,
-  ocrConfidence = 100,
+  evidence = 100,
 ): MatchResult | null {
-  const title = normalizeForMatch(recognizedTitle);
-  if (!title) return null;
+  const recognizedKey = normalizeForMatch(recognizedTitle);
+  if (!recognizedKey) return null;
 
   for (const wantedTerm of wantedList) {
-    const term = normalizeForMatch(wantedTerm);
-    if (tokenContains(title, term)) {
+    if (normalizeForMatch(wantedTerm) === recognizedKey) {
       return {
         wantedTerm,
         recognizedTitle,
-        confidence: ocrConfidence >= directGreenThreshold(sensitivity) ? 'strong' : 'possible',
+        confidence: evidence >= 62 ? 'strong' : 'possible',
         isDirectMatch: true,
       };
     }
   }
 
-  // Fuzzy title similarity never produces a blocking green result. It is only
-  // a quick yellow cue for a human to look again at an imperfect OCR read.
-  const threshold = sensitivity === 'conservative' ? 0.93 : sensitivity === 'balanced' ? 0.75 : 0.55;
-  for (const wantedTerm of wantedList) {
-    if (similarity(title, normalizeForMatch(wantedTerm)) >= threshold) {
-      return { wantedTerm, recognizedTitle, confidence: 'possible', isDirectMatch: false };
-    }
-  }
   return null;
 }

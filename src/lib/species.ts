@@ -18,9 +18,8 @@ export interface PokemonRecognition {
 }
 
 /**
- * The `pokemon` package ships a static, English National Dex list. It is bundled
- * with the app at build time, so recognition remains local/offline after the app
- * has loaded. IDs are 1-based and correspond directly to National Dex numbers.
+ * The `pokemon` package ships a static English National Dex list. It is bundled
+ * with the app at build time, so recognition remains local/offline after loading.
  */
 export const POKEMON_SPECIES: readonly PokemonSpecies[] = pokemon.all('en').map((name, index) => ({
   dex: index + 1,
@@ -28,6 +27,11 @@ export const POKEMON_SPECIES: readonly PokemonSpecies[] = pokemon.all('en').map(
   normalized: normalizeSpeciesText(name),
   compact: compactSpeciesText(name),
 }));
+
+const CARD_METADATA = new Set([
+  'basic', 'stage', 'restored', 'rapid', 'strike', 'single', 'fusion', 'ancient',
+  'future', 'pokemon', 'trainer', 'supporter', 'item', 'energy', 'rule',
+]);
 
 function normalizeSpeciesText(value: string): string {
   return value
@@ -52,11 +56,7 @@ function levenshteinDistance(a: string, b: string): number {
     row[0] = i;
     for (let j = 1; j <= b.length; j += 1) {
       const saved = row[j];
-      row[j] = Math.min(
-        row[j] + 1,
-        row[j - 1] + 1,
-        previousDiagonal + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previousDiagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
       previousDiagonal = saved;
     }
   }
@@ -68,47 +68,86 @@ function editSimilarity(a: string, b: string): number {
   return 1 - levenshteinDistance(a, b) / Math.max(a.length, b.length);
 }
 
+/**
+ * OCR often clips or confuses one character in card metadata. Treat words such
+ * as `asic`, `baslc`, and `stag` as metadata too, so they cannot compete with
+ * the actual Pokémon name in a shared scan box.
+ */
+function isCardMetadataToken(token: string): boolean {
+  if (CARD_METADATA.has(token)) return true;
+  return [...CARD_METADATA].some((metadata) => {
+    if (token.length < 3 || Math.abs(token.length - metadata.length) > 1) return false;
+    const maxDistance = metadata.length <= 5 ? 1 : Math.max(1, Math.floor(metadata.length * 0.18));
+    return levenshteinDistance(token, metadata) <= maxDistance;
+  });
+}
+
 function scoreTokenAgainstSpecies(token: string, species: PokemonSpecies): number {
   if (token === species.compact) return 1;
   if (token.length < 4) return 0;
-
-  // OCR often loses a leading character (e.g. "armander"). A contained fragment
-  // may be useful, but it is intentionally capped below a clean full-name read.
   if (species.compact.includes(token) || token.includes(species.compact)) {
     const fragmentRatio = Math.min(token.length, species.compact.length) / Math.max(token.length, species.compact.length);
     return Math.min(0.88, 0.52 + fragmentRatio * 0.42);
   }
-
   return editSimilarity(token, species.compact);
 }
 
+function isNidoranSpecies(species: PokemonSpecies): boolean {
+  return /^nidoran/i.test(species.name);
+}
+
+function normalizedPreferredNames(preferredNames: readonly string[]): Set<string> {
+  return new Set(preferredNames.map(normalizeSpeciesText));
+}
+
 /**
- * Resolves noisy OCR against the closed 1,025-species English lexicon. It returns
- * no result when the best candidate is weak or too close to the runner-up, so the
- * UI does not turn arbitrary card text into a confident Pokémon name.
+ * Resolves noisy OCR against the closed 1,025-species English lexicon. It does
+ * not convert arbitrary graphics into Pokémon names: a candidate still needs a
+ * strong score and a margin over its runner-up. Known card metadata — including
+ * one-character OCR damage such as `asic` for `Basic` — is removed before
+ * scoring.
  */
-export function resolvePokemonRecognition(rawOcrText: string): PokemonRecognition | null {
+export function resolvePokemonRecognition(rawOcrText: string, preferredNames: readonly string[] = []): PokemonRecognition | null {
   const normalized = normalizeSpeciesText(rawOcrText);
-  const tokens = normalized.split(' ').map(compactSpeciesText).filter((token) => token.length >= 3);
+  const rawTokens = normalized.split(' ').map(compactSpeciesText).filter((token) => token.length >= 3);
+  const tokens = rawTokens.filter((token) => !isCardMetadataToken(token));
   if (!tokens.length) return null;
+
+  const hasBareNidoran = tokens.includes('nidoran') && !tokens.includes('male') && !tokens.includes('female');
+  const preferredKeys = normalizedPreferredNames(preferredNames);
+  const wantedNidorans = POKEMON_SPECIES.filter((species) => isNidoranSpecies(species) && preferredKeys.has(species.normalized));
+
+  // The gender glyph is a meaningful part of the identity. A bare Nidoran is
+  // usable only when the current Wanted List leaves exactly one form possible;
+  // it is still medium confidence and must be confirmed by the operator.
+  if (hasBareNidoran && wantedNidorans.length !== 1) return null;
 
   const scored = POKEMON_SPECIES.map((species) => {
     let score = 0;
     for (const token of tokens) score = Math.max(score, scoreTokenAgainstSpecies(token, species));
-
-    // A complete species name embedded in a longer OCR title is especially strong.
     if (normalized.includes(species.normalized)) score = Math.max(score, 0.985);
-    return { species, score };
+    if (hasBareNidoran && species.dex === wantedNidorans[0]?.dex) score = Math.max(score, 0.83);
+    return { species, score: Math.min(1, score) };
   }).sort((a, b) => b.score - a.score || a.species.dex - b.species.dex);
 
   const best = scored[0];
   const runnerUp = scored[1];
   if (!best || !runnerUp) return null;
 
+  if (hasBareNidoran && best.species.dex === wantedNidorans[0]?.dex) {
+    return {
+      species: best.species,
+      score: best.score,
+      runnerUp: runnerUp.species,
+      runnerUpScore: runnerUp.score,
+      confidence: 'medium',
+    };
+  }
+
   const margin = best.score - runnerUp.score;
   const exactish = best.score >= 0.96;
   const high = (exactish && margin >= 0.035) || (best.score >= 0.91 && margin >= 0.085);
-  const medium = best.score >= 0.78 && margin >= 0.06;
+  const medium = best.score >= 0.78 && margin >= 0.045;
   if (!high && !medium) return null;
 
   return {
