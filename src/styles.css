@@ -96,3 +96,58 @@ button { cursor: pointer; }
 .reset-scan-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 0; }
 @media (min-width: 800px) { .scan-bottom-stack { width: min(620px, 100%); margin: 0 auto; } .camera-stage { max-width: 620px; margin: 0 auto; } .scan-screen { max-width: 620px; margin: 0 auto; box-shadow: 0 0 0 1px #ffffff10, 0 0 90px #0008; } }
 @media (max-width: 380px) { .camera-stage { height: max(470px, 66svh); } .dock-scan-mode-controls .auto-scan-toggle { font-size: .67rem; } }
+
+/* v0.7.2: compact single-screen scan layout and Pokémon type-ahead. */
+.scan-screen { min-height: calc(100svh - 76px); overflow: hidden; }
+.camera-stage { height: clamp(236px, 32svh, 292px); }
+.preview-closed .camera-stage { height: clamp(282px, 43svh, 380px); }
+.scan-bottom-stack { gap: 6px; padding: 7px 10px 8px; }
+.ocr-preview-panel { padding: 8px 10px; }
+.ocr-preview-header { align-items: center; }
+.ocr-preview-header label { margin-bottom: 2px; }
+.ocr-preview-header p { font-size: .68rem; }
+.ocr-preview-state { max-width: 52%; margin: 0 !important; color: #edf3fc !important; font-size: .72rem !important; font-weight: 800; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocr-preview-body { display: block; margin-top: 7px; }
+.ocr-preview-image { min-height: 56px; max-height: 72px; border-radius: 7px; }
+.ocr-preview-image img { width: 100%; height: 100%; max-height: 72px; object-fit: contain; image-rendering: auto; }
+.ocr-debug-placeholder { padding: 8px; font-size: .68rem; }
+.ocr-preview-details { display: flex; gap: 7px; margin-top: 5px; overflow: hidden; }
+.ocr-preview-details small { min-width: 0; font-size: .62rem; }
+.scan-control-dock { padding: 7px; }
+.scan-mode-readout { margin: 0 0 5px; font-size: .68rem; }
+.dock-primary-controls { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.45fr) minmax(0, .9fr); gap: 6px; }
+.preview-toggle, .auto-scan-toggle, .capture-now { min-height: 38px; padding: 7px 5px; }
+.preview-toggle, .auto-scan-toggle { font-size: .63rem; }
+.capture-now { font-size: .82rem; }
+.manual-entry-wrap { position: relative; }
+.manual-entry { gap: 6px; padding: 6px; }
+.manual-entry input { padding: 8px 9px; font-size: .78rem; }
+.manual-entry button { min-height: 36px; padding: 7px 9px; }
+.typeahead-menu { position: absolute; z-index: 25; left: 0; right: 0; top: calc(100% + 4px); overflow: hidden; border: 1px solid #c5ff844d; border-radius: 10px; background: #111924fa; box-shadow: 0 12px 30px #000b; }
+.typeahead-menu button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-bottom: 1px solid #ffffff10; padding: 9px 11px; color: #edf4fc; background: transparent; text-align: left; font-size: .78rem; }
+.typeahead-menu button:last-child { border-bottom: 0; }
+.typeahead-menu button:active { background: #c5ff8420; }
+.typeahead-menu small { color: #c8ff8e; font-weight: 800; }
+.confirmation-strip { padding: 6px 7px; font-size: .72rem; }
+.confirmation-strip button { padding: 7px 8px; }
+.scan-note { font-size: .66rem; }
+.wanted-typeahead { position: relative; margin-top: 13px; }
+.wanted-typeahead > label { display: block; margin: 0 0 6px; color: #c8d6e9; font-size: .8rem; font-weight: 800; }
+.wanted-add-input input { width: 100%; border: 1px solid #ffffff20; border-radius: 10px; padding: 10px 11px; color: #f3f7fc; background: #080d13; outline: none; }
+.wanted-add-input input:focus { border-color: #c5ff8490; box-shadow: 0 0 0 3px #c5ff8416; }
+.wanted-menu { top: calc(100% + 4px); }
+.add-note { margin: 6px 2px 0; color: #c8ff8e; font-size: .75rem; }
+.wanted-editor { min-height: 36vh; }
+@media (max-height: 760px) {
+  .camera-stage { height: clamp(220px, 30svh, 254px); }
+  .preview-closed .camera-stage { height: clamp(262px, 39svh, 315px); }
+  .ocr-preview-image { min-height: 48px; max-height: 60px; }
+  .ocr-preview-image img { max-height: 60px; }
+  .scan-bottom-stack { gap: 5px; padding-top: 5px; }
+  .preview-toggle, .auto-scan-toggle, .capture-now { min-height: 35px; }
+}
+@media (max-width: 380px) {
+  .preview-toggle, .auto-scan-toggle { font-size: .57rem; }
+  .capture-now { font-size: .75rem; }
+  .ocr-preview-details { gap: 5px; }
+}

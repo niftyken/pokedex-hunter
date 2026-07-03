@@ -2,7 +2,7 @@
 
 **Pokedex Hunter** is a camera-first React + Vite Progressive Web App for finding physical English Pokémon cards that match a locally stored Wanted List. It is intended for bulk-card searching on iPhone and Android, with all lists and settings retained locally in browser storage.
 
-Current release: **v0.7.1**.
+Current release: **v0.7.2**.
 
 ## Current capabilities
 
@@ -16,9 +16,9 @@ Current release: **v0.7.1**.
 - **Pokémon species recognition:** OCR is constrained against a bundled English National Dex list. Card metadata such as **Basic** is excluded from recognition scoring, including common one-character OCR damage such as `asic` or `baslc`, so it does not compete with the Pokémon name. Common punctuation is normalized. A bare **Nidoran** is considered only when exactly one Nidoran form remains on the Wanted List, and it always requires confirmation.
 - **Fixed matching policy:** The former Sensitivity setting was removed. Rather than exposing several opaque thresholds, the app uses a consistent handheld policy: a high-confidence canonical read can immediately trigger a Wanted List hit, while medium evidence needs repeat agreement and operator confirmation where appropriate. Wanted List matching is canonical and exact, so **Mew** never matches **Mewtwo**, **Latias** never matches **Latios**, and the two Nidoran forms never match each other.
 - **Green / yellow workflow:** Strong Wanted List matches open a green hit sheet. A medium candidate stays yellow until the operator confirms it. The hit sheet presents the canonical species and its Pokédex number, followed by **Remove from List**, **Keep on List**, and **Reject**.
-- **Manual name check:** Enter any Pokémon name manually. A Wanted List match follows the same green-alert workflow as OCR.
-- **Wanted List workflow:** One search term per line; blanks and duplicates are ignored. First-time installations receive the bundled default 392-Pokémon list, and existing users can load it from Wanted List at any time.
-- **Scanning-first layout:** The Scan screen prioritizes an unobstructed live camera area, then presents controls below it in this order: **OCR Preview**, **Scan Mode** (Capture and Auto On/Off), and the manual name check. The crop image and raw OCR diagnostics remain visible whenever OCR Preview is enabled. Camera selection and recovery actions live on the dedicated **Scan Tools** tab. **Reset scan setup** restores the default OCR region, turns OCR Preview on, and turns Auto Scanning on. There is no separate Settings screen.
+- **Manual name check and autocomplete:** Enter any Pokémon name manually. As you type, a short local type-ahead list prioritizes Wanted List entries, then canonical National Dex names. Selecting a suggestion immediately checks its exact canonical species; a Wanted List match follows the same green-alert workflow as OCR.
+- **Wanted List workflow:** One search term per line; blanks and duplicates are ignored. The Wanted List tab also includes an **Add a Pokémon** autocomplete field for adding canonical names without spelling mistakes. First-time installations receive the bundled default 392-Pokémon list, and existing users can load it from Wanted List at any time.
+- **Single-screen scanning layout:** The Scan screen is sized for a modern iPhone portrait viewport: enough live-card context to aim the OCR box, while keeping OCR Preview, the manual check field, and bottom navigation visible without routine scrolling. When OCR Preview is on, its crop and diagnostics sit directly below the camera; its status/readout shares the panel header. The compact control row sits below that panel in this order: **OCR Preview**, centered **Capture**, and **Auto On/Off**. Turning preview off expands the live camera area. Camera selection and recovery actions live on the dedicated **Scan Tools** tab. **Reset scan setup** restores the default OCR region, turns OCR Preview on, and turns Auto Scanning on. There is no separate Settings screen.
 - **Visible build marker:** The Scan header displays the release version, which should be checked before evaluating a new Vercel deployment.
 - **PWA cache revisioning:** The service worker cache is versioned per release to reduce stale app-shell problems after deployment.
 
@@ -46,7 +46,7 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 2. Move or resize **SCAN POKÉMON NAME HERE** so the printed name sits inside it. Keep unrelated text, especially **Basic**, HP, and border lines, outside the box when practical.
 3. Watch the status line: **Scanning for Pokémon names…** means no usable species has been recognized yet; **Found a [name].** confirms OCR recognition even when that species is not wanted; **Is that a [name]?** asks for confirmation of a medium-confidence candidate.
 4. With **Auto On**, hold the card reasonably steady; the app prefers a briefly stable frame but also forces an attempt after a short wait in difficult handheld lighting. Press the centered **Capture** button at any time to scan the current frame immediately. With Auto Off, Capture is the normal scanning action.
-5. Use **OCR Preview** to inspect the processed crop, raw OCR, and canonical candidate. Use the manual field to check any name directly.
+5. Use **OCR Preview** to inspect the processed crop, raw OCR, and canonical candidate. The manual field offers local suggestions as you type; choose one to check it immediately, or press Check to test typed text directly.
 6. A strong Wanted List match opens the green sheet. A yellow `?` candidate can be confirmed manually.
 7. Use **Remove from List**, **Keep on List**, or **Reject** to resume scanning. Open the **Scan Tools** tab only when changing camera or resetting the scan setup.
 
@@ -66,7 +66,7 @@ Vercel deploys from `main`. Open the newest Ready deployment, then confirm the v
 - `src/hooks/useCamera.ts` — `getUserMedia` lifecycle and camera teardown.
 - `src/hooks/useTitleOcr.ts` — crop mapping, preprocessing, forgiving auto-scan gating, manual Capture override, temporal agreement, and preview state.
 - `src/lib/ocr.ts` — Tesseract.js worker integration.
-- `src/lib/species.ts` — English species lookup, canonicalization, card-metadata filtering, aliases, and Pokédex formatting.
+- `src/lib/species.ts` — English species lookup, canonicalization, card-metadata filtering, type-ahead search, aliases, and Pokédex formatting.
 - `src/lib/matching.ts` — Wanted List parsing and fixed conservative matching policy.
 - `src/lib/defaultWantedList.ts` — bundled default list.
 - `src/lib/storage.ts` — `localStorage` keys, defaults, and persisted OCR-zone settings.

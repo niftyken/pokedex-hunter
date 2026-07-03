@@ -162,3 +162,33 @@ export function resolvePokemonRecognition(rawOcrText: string, preferredNames: re
 export function formatDexNumber(dex: number): string {
   return `#${String(dex).padStart(4, '0')}`;
 }
+
+/**
+ * Compact type-ahead search for manual checks and Wanted List editing. Results
+ * favor exact/prefix matches and items already present in the Wanted List.
+ */
+export function searchPokemonSpecies(
+  query: string,
+  preferredNames: readonly string[] = [],
+  limit = 5,
+): PokemonSpecies[] {
+  const normalizedQuery = normalizeSpeciesText(query);
+  const compactQuery = compactSpeciesText(query);
+  if (!compactQuery) return [];
+  const preferred = normalizedPreferredNames(preferredNames);
+
+  return POKEMON_SPECIES
+    .map((species) => {
+      const nameStarts = species.compact.startsWith(compactQuery);
+      const wordStarts = species.normalized.split(' ').some((word) => word.startsWith(compactQuery));
+      const contains = species.compact.includes(compactQuery) || species.normalized.includes(normalizedQuery);
+      if (!nameStarts && !wordStarts && !contains) return null;
+      const matchRank = nameStarts ? 0 : wordStarts ? 1 : 2;
+      const wantedRank = preferred.has(species.normalized) ? 0 : 1;
+      return { species, matchRank, wantedRank };
+    })
+    .filter((value): value is { species: PokemonSpecies; matchRank: number; wantedRank: number } => Boolean(value))
+    .sort((a, b) => a.wantedRank - b.wantedRank || a.matchRank - b.matchRank || a.species.name.localeCompare(b.species.name))
+    .slice(0, limit)
+    .map(({ species }) => species);
+}

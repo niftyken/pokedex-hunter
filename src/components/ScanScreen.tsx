@@ -4,7 +4,7 @@ import { useCamera } from '../hooks/useCamera';
 import { useTitleOcr, type ScanRecognition } from '../hooks/useTitleOcr';
 import { findWantedMatch } from '../lib/matching';
 import { APP_VERSION } from '../lib/appMeta';
-import { formatDexNumber, resolvePokemonRecognition } from '../lib/species';
+import { formatDexNumber, resolvePokemonRecognition, searchPokemonSpecies, type PokemonSpecies } from '../lib/species';
 import { DEFAULT_OCR_ZONE } from '../lib/storage';
 import type { AppSettings, FrozenFrame, MatchResult, OcrZone, Signal } from '../types';
 
@@ -69,6 +69,7 @@ export function ScanScreen({
   const [confirmedNote, setConfirmedNote] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualFeedback, setManualFeedback] = useState('');
+  const [manualSuggestionsOpen, setManualSuggestionsOpen] = useState(false);
   const [signal, setSignal] = useState<Signal>('idle');
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [frozen, setFrozen] = useState<FrozenFrame | null>(null);
@@ -78,6 +79,7 @@ export function ScanScreen({
   const previewVisible = settings.showOcrDebug;
   const isFrozen = Boolean(frozen && match);
   const zone = settings.ocrZone ?? DEFAULT_OCR_ZONE;
+  const manualSuggestions = useMemo(() => searchPokemonSpecies(manualName, wantedList, 5), [manualName, wantedList]);
 
   const captureFrame = useCallback((): string | undefined => {
     const video = videoRef.current;
@@ -210,8 +212,29 @@ export function ScanScreen({
     setManualFeedback(`${displayText} is not on your Wanted List.`);
   }, [manualName, openHit, wantedList]);
 
+  const selectManualSuggestion = useCallback((species: PokemonSpecies) => {
+    setManualName(species.name);
+    setManualSuggestionsOpen(false);
+    setManualFeedback('');
+    const recognition: ScanRecognition = {
+      rawText: species.name,
+      displayText: `${species.name} ${formatDexNumber(species.dex)}`,
+      ocrConfidence: 100,
+      crop: 'operator-zone',
+      species: { species, score: 1, runnerUpScore: 0, confidence: 'high' },
+    };
+    const nextMatch = findWantedMatch(species.name, wantedList, 100);
+    setLastRead(recognition.displayText);
+    if (nextMatch) openHit(nextMatch, recognition);
+    else {
+      setSignal('idle');
+      setManualFeedback(`${recognition.displayText} is not on your Wanted List.`);
+    }
+  }, [openHit, wantedList]);
+
   const clearManualName = useCallback(() => {
     setManualName('');
+    setManualSuggestionsOpen(false);
     setManualFeedback('');
     clearRead();
   }, [clearRead]);
@@ -254,7 +277,7 @@ export function ScanScreen({
     ? `${frozen.speciesName} ${formatDexNumber(frozen.dex ?? 0)}`
     : match?.wantedTerm;
 
-  return <main className="scan-screen">
+  return <main className={`scan-screen ${previewVisible ? 'preview-open' : 'preview-closed'}`}>
     <section ref={scanSurfaceRef} className="camera-stage" aria-label="Live card camera">
       <video ref={videoRef} className={isFrozen ? 'camera hidden' : 'camera'} muted playsInline autoPlay />
       {frozen?.imageUrl && <img className="frozen-frame" src={frozen.imageUrl} alt="Frozen camera frame" />}
@@ -288,46 +311,43 @@ export function ScanScreen({
     </section>
 
     {!isFrozen && <div className="scan-bottom-stack">
-      <section className="ocr-preview-control" aria-label="OCR Preview control">
-        <button
-          className={`preview-toggle ${previewVisible ? 'active' : ''}`}
-          onClick={() => onSettingsChange({ ...settings, showOcrDebug: !previewVisible })}
-          aria-pressed={previewVisible}
-        >
-          {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview {previewVisible ? 'On' : 'Off'}</span>
-        </button>
-      </section>
-
       {previewVisible && <section className="ocr-preview-panel">
         <div className="ocr-preview-header">
           <div>
-            <label>OCR preview</label>
+            <label>OCR Preview</label>
             <p>Status: {ocrStatus}{preview ? ` · OCR ${Math.round(preview.ocrConfidence)}%` : ''}</p>
           </div>
+          <p className="ocr-preview-state">{preview?.canonicalText ?? 'Waiting for a stable read'}</p>
         </div>
         <div className="ocr-preview-body">
           <div className="ocr-preview-image">
             {preview ? <img src={preview.imageUrl} alt="Current OCR crop" /> : <div className="ocr-debug-placeholder">Waiting for a current crop</div>}
           </div>
           <div className="ocr-preview-details">
-            <p className="ocr-preview-read">{preview?.canonicalText ?? 'Waiting for a stable read'}</p>
             {preview && <small>Raw: {preview.rawText}</small>}
-            {preview?.speciesScore && <small>Species match {Math.round(preview.speciesScore * 100)}%</small>}
+            {preview?.speciesScore && <small>Pokémon match {Math.round(preview.speciesScore * 100)}%</small>}
             {preview?.runnerUp && <small>Next: {preview.runnerUp}</small>}
           </div>
         </div>
       </section>}
 
-      <section className="scan-control-dock" aria-label="Scan mode controls">
+      <section className="scan-control-dock" aria-label="Scan controls">
         <p className="scan-mode-readout" aria-live="polite">{scanModeReadout}</p>
-        <div className="dock-row dock-scan-mode-controls">
+        <div className="dock-primary-controls">
+          <button
+            className={`preview-toggle ${previewVisible ? 'active' : ''}`}
+            onClick={() => onSettingsChange({ ...settings, showOcrDebug: !previewVisible })}
+            aria-pressed={previewVisible}
+          >
+            {previewVisible ? <Eye size={16} /> : <EyeOff size={16} />}<span>OCR Preview</span>
+          </button>
           <button className="capture-now" onClick={() => void captureSample()}><ScanLine size={19} /> Capture</button>
           <button
             className={`auto-scan-toggle ${settings.autoScan ? 'active' : ''}`}
             onClick={() => onSettingsChange({ ...settings, autoScan: !settings.autoScan })}
             aria-pressed={settings.autoScan}
           >
-            <ScanLine size={17} /><span>Auto {settings.autoScan ? 'On' : 'Off'}</span>
+            <ScanLine size={16} /><span>Auto {settings.autoScan ? 'On' : 'Off'}</span>
           </button>
         </div>
       </section>
@@ -339,20 +359,32 @@ export function ScanScreen({
       </section>}
       {confirmedNote && <p className="scan-note">{confirmedNote}</p>}
 
-      <section className="manual-entry" aria-label="Manual Pokémon name entry">
-        <input
-          value={manualName}
-          onChange={(event) => { setManualName(event.target.value); setManualFeedback(''); }}
-          onKeyDown={(event) => { if (event.key === 'Enter') submitManualName(); }}
-          placeholder="Check a Pokémon name"
-          autoCapitalize="words"
-          spellCheck="false"
-        />
-        <button className="manual-submit" onClick={submitManualName}>Check</button>
-        <button className="manual-clear" onClick={clearManualName} aria-label="Clear manual entry"><X size={17} /></button>
+      <section className="manual-entry-wrap" aria-label="Manual Pokémon name entry">
+        <div className="manual-entry">
+          <input
+            value={manualName}
+            onFocus={() => setManualSuggestionsOpen(true)}
+            onChange={(event) => { setManualName(event.target.value); setManualFeedback(''); setManualSuggestionsOpen(true); }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              if (manualSuggestionsOpen && manualSuggestions[0]) selectManualSuggestion(manualSuggestions[0]);
+              else submitManualName();
+            }}
+            placeholder="Check a Pokémon name"
+            autoCapitalize="words"
+            spellCheck="false"
+          />
+          <button className="manual-submit" onClick={submitManualName}>Check</button>
+          <button className="manual-clear" onClick={clearManualName} aria-label="Clear manual entry"><X size={17} /></button>
+        </div>
+        {manualSuggestionsOpen && manualName.trim() && manualSuggestions.length > 0 && <div className="typeahead-menu" role="listbox" aria-label="Pokémon suggestions">
+          {manualSuggestions.map((species) => <button key={species.dex} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectManualSuggestion(species)}>
+            <span>{species.name}</span><small>{formatDexNumber(species.dex)}</small>
+          </button>)}
+        </div>}
       </section>
       {manualFeedback && <p className="scan-note">{manualFeedback}</p>}
-
     </div>}
 
     {isFrozen && match && <div className="hit-sheet" role="dialog" aria-modal="true" aria-label="Possible match">
