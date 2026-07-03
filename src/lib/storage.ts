@@ -16,6 +16,7 @@ export const DEFAULT_OCR_ZONE: OcrZone = {
 export const DEFAULT_SETTINGS: AppSettings = {
   cameraDeviceId: '',
   showOcrDebug: true,
+  autoScan: true,
   ocrZone: DEFAULT_OCR_ZONE,
 };
 
@@ -50,6 +51,7 @@ export function loadSettings(): AppSettings {
       ...DEFAULT_SETTINGS,
       cameraDeviceId: typeof saved.cameraDeviceId === 'string' ? saved.cameraDeviceId : '',
       showOcrDebug: typeof saved.showOcrDebug === 'boolean' ? saved.showOcrDebug : DEFAULT_SETTINGS.showOcrDebug,
+      autoScan: typeof saved.autoScan === 'boolean' ? saved.autoScan : DEFAULT_SETTINGS.autoScan,
       ocrZone: validZone(saved.ocrZone) ?? DEFAULT_OCR_ZONE,
     };
   } catch {

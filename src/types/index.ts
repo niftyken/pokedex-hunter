@@ -14,6 +14,8 @@ export interface AppSettings {
   cameraDeviceId: string;
   /** Persisted from the Scan screen's Preview toggle. */
   showOcrDebug: boolean;
+  /** When enabled, OCR runs automatically; Capture always remains available. */
+  autoScan: boolean;
   /** Operator-adjustable OCR rectangle, saved per device. */
   ocrZone: OcrZone;
 }

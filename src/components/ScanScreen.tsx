@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Check, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
+import { Check, Eye, EyeOff, RotateCcw, ScanLine, X } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useTitleOcr, type ScanRecognition } from '../hooks/useTitleOcr';
 import { findWantedMatch } from '../lib/matching';
@@ -151,11 +151,12 @@ export function ScanScreen({
     }
   }, [frozen, pendingRecognition]);
 
-  const { status: ocrStatus, preview, captureSample } = useTitleOcr({
+  const { status: ocrStatus, preview, autoScanState, captureSample } = useTitleOcr({
     videoRef,
     cropTargetRef: ocrTargetRef,
     enabled: isReady && !isFrozen,
     previewEnabled: previewVisible,
+    autoScan: settings.autoScan,
     preferredNames: wantedList,
     onResult: evaluateRecognition,
     onScanning: handleScanning,
@@ -247,6 +248,9 @@ export function ScanScreen({
   }, []);
 
   const isReading = ocrStatus === 'warming' || ocrStatus === 'reading';
+  const scanModeReadout = settings.autoScan
+    ? `Scan mode: Auto: ${autoScanState === 'reading' ? 'Reading card' : autoScanState === 'ready' ? 'Ready for next card' : 'Waiting for stable picture'}`
+    : 'Scan mode: Tap Capture button to scan';
   const freezeTitle = frozen?.speciesName
     ? `${frozen.speciesName} ${formatDexNumber(frozen.dex ?? 0)}`
     : match?.wantedTerm;
@@ -289,7 +293,6 @@ export function ScanScreen({
             <label>OCR preview</label>
             <p>Status: {ocrStatus}{preview ? ` · OCR ${Math.round(preview.ocrConfidence)}%` : ''}</p>
           </div>
-          <button onClick={() => void captureSample()}>Capture</button>
         </div>
         <div className="ocr-preview-body">
           <div className="ocr-preview-image">
@@ -326,6 +329,7 @@ export function ScanScreen({
       {manualFeedback && <p className="scan-note">{manualFeedback}</p>}
 
       <section className="scan-control-dock" aria-label="Scan controls">
+        <p className="scan-mode-readout" aria-live="polite">{scanModeReadout}</p>
         <div className="dock-row">
           <button
             className={`preview-toggle ${previewVisible ? 'active' : ''}`}
@@ -334,7 +338,17 @@ export function ScanScreen({
           >
             {previewVisible ? <Eye size={17} /> : <EyeOff size={17} />}<span>OCR Preview</span>
           </button>
-          <button className="reset-zone" onClick={() => onSettingsChange({ ...settings, ocrZone: DEFAULT_OCR_ZONE })}><RotateCcw size={16} /> Reset</button>
+          <button
+            className={`auto-scan-toggle ${settings.autoScan ? 'active' : ''}`}
+            onClick={() => onSettingsChange({ ...settings, autoScan: !settings.autoScan })}
+            aria-pressed={settings.autoScan}
+          >
+            <ScanLine size={17} /><span>Auto Scanning {settings.autoScan ? 'On' : 'Off'}</span>
+          </button>
+        </div>
+        <div className="dock-row dock-actions">
+          <button className="capture-now" onClick={() => void captureSample()}><ScanLine size={16} /> Capture</button>
+          <button className="reset-zone" onClick={() => onSettingsChange({ ...settings, autoScan: true, ocrZone: DEFAULT_OCR_ZONE })}><RotateCcw size={16} /> Reset</button>
         </div>
         <select value={settings.cameraDeviceId} onChange={(event) => onSettingsChange({ ...settings, cameraDeviceId: event.target.value })} aria-label="Camera">
           <option value="">Rear camera (preferred)</option>

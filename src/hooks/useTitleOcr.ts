@@ -3,17 +3,19 @@ import { resolvePokemonRecognition, formatDexNumber, type PokemonRecognition } f
 import { TesseractOcrAdapter } from '../lib/ocr';
 import type { OcrStatus } from '../types';
 
-// Handheld-oriented cadence: let one clearly high-confidence, unambiguous
-// species reading act immediately. Temporal agreement is reserved for medium
-// evidence, where it meaningfully filters false positives without making a
-// bulk-card scan miss a card that is only held in view for 1–2 seconds.
-const SAMPLE_EVERY_MS = 240;
-const OCR_COOLDOWN_MS = 760;
-const STABLE_SAMPLES_REQUIRED = 2;
+// Handheld-oriented auto scanning deliberately favors timely opportunities over
+// strict stillness. A briefly steady frame is preferred, but a forced attempt
+// prevents dim-light autofocus noise from making the scanner wait forever.
+const SAMPLE_EVERY_MS = 220;
+const OCR_COOLDOWN_MS = 520;
+const STABLE_SAMPLES_REQUIRED = 1;
+const FORCED_AUTO_ATTEMPT_MS = 1_350;
 const MEDIUM_AGREEMENT_WINDOW_MS = 3_200;
 const MEDIUM_AGREEMENT_REQUIRED = 2;
+const EMITTED_DEDUPE_MS = 2_400;
 
 interface SourceRect { x: number; y: number; width: number; height: number; }
+export type AutoScanState = 'manual' | 'waiting' | 'reading' | 'ready';
 
 export interface ScanRecognition {
   rawText: string;
@@ -73,8 +75,6 @@ function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): So
 }
 
 function trimInnerEdges(rect: SourceRect): SourceRect {
-  // Exclude a small safety margin so the scan box may visibly touch a card's
-  // frame without feeding its border lines directly into Tesseract.
   const insetX = rect.width * 0.028;
   const insetY = rect.height * 0.11;
   return {
@@ -108,8 +108,6 @@ function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
     data[index + 3] = 255;
   }
 
-  // Remove only nearly full-width dark rows. These are commonly card rules or
-  // borders; actual letter rows never occupy most of a wide name strip.
   for (let y = 0; y < canvas.height; y += 1) {
     let dark = 0;
     for (let x = 0; x < canvas.width; x += 1) if (data[(y * canvas.width + x) * 4] < 72) dark += 1;
@@ -156,7 +154,9 @@ function isSimilarFrame(previous: number[], current: number[]): boolean {
   if (!previous.length || previous.length !== current.length) return false;
   let difference = 0;
   for (let index = 0; index < previous.length; index += 1) difference += Math.abs(previous[index] - current[index]);
-  return difference / previous.length < 9;
+  // More tolerant than v0.6.2: hand tremor and low-light sensor noise should
+  // not indefinitely suppress automatic OCR.
+  return difference / previous.length < 17;
 }
 
 export function useTitleOcr({
@@ -164,6 +164,7 @@ export function useTitleOcr({
   cropTargetRef,
   enabled,
   previewEnabled,
+  autoScan,
   preferredNames,
   onResult,
   onScanning,
@@ -172,29 +173,38 @@ export function useTitleOcr({
   cropTargetRef: RefObject<HTMLElement | null>;
   enabled: boolean;
   previewEnabled: boolean;
+  autoScan: boolean;
   preferredNames: readonly string[];
   onResult: (result: ScanRecognition) => void;
   onScanning: () => void;
 }) {
   const [status, setStatus] = useState<OcrStatus>('idle');
   const [preview, setPreview] = useState<OcrPreview | null>(null);
+  const [autoScanState, setAutoScanState] = useState<AutoScanState>(autoScan ? 'waiting' : 'manual');
   const onResultRef = useRef(onResult);
   const onScanningRef = useRef(onScanning);
   const preferredNamesRef = useRef(preferredNames);
+  const autoScanRef = useRef(autoScan);
   const adapterRef = useRef<TesseractOcrAdapter | null>(null);
   const previousSignatureRef = useRef<number[]>([]);
   const stableCountRef = useRef(0);
   const readingRef = useRef(false);
   const lastOcrAtRef = useRef(0);
+  const lastAutoAttemptAtRef = useRef(0);
   const initializedRef = useRef(false);
   const mediumEvidenceRef = useRef<Array<{ key: string; seenAt: number }>>([]);
-  const lastEmittedKeyRef = useRef('');
+  const lastEmittedRef = useRef<{ key: string; emittedAt: number } | null>(null);
 
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
   useEffect(() => { onScanningRef.current = onScanning; }, [onScanning]);
   useEffect(() => { preferredNamesRef.current = preferredNames; }, [preferredNames]);
+  useEffect(() => {
+    autoScanRef.current = autoScan;
+    if (!autoScan && !readingRef.current) setAutoScanState('manual');
+    if (autoScan && !readingRef.current) setAutoScanState('waiting');
+  }, [autoScan]);
 
-  const runRecognition = useCallback(async () => {
+  const runRecognition = useCallback(async (source: 'auto' | 'capture' = 'capture') => {
     const video = videoRef.current;
     const cropTarget = cropTargetRef.current;
     const adapter = adapterRef.current;
@@ -203,6 +213,8 @@ export function useTitleOcr({
     if (!crop) return;
 
     readingRef.current = true;
+    if (source === 'auto') lastAutoAttemptAtRef.current = Date.now();
+    setAutoScanState('reading');
     setStatus(initializedRef.current ? 'reading' : 'warming');
     try {
       const result = await adapter.readTitle(crop);
@@ -226,8 +238,6 @@ export function useTitleOcr({
       }
 
       if (!species) {
-        // Do not erase recent medium-confidence evidence merely because a
-        // handheld frame was blurred or unreadable. Expire it by time instead.
         const cutoff = Date.now() - MEDIUM_AGREEMENT_WINDOW_MS;
         mediumEvidenceRef.current = mediumEvidenceRef.current.filter((entry) => entry.seenAt >= cutoff);
         onScanningRef.current();
@@ -235,20 +245,15 @@ export function useTitleOcr({
       }
 
       const key = String(species.species.dex);
-      if (lastEmittedKeyRef.current === key) return;
+      const recentEmission = lastEmittedRef.current;
+      if (recentEmission?.key === key && Date.now() - recentEmission.emittedAt < EMITTED_DEDUPE_MS) return;
 
-      // Exact/high lexicon matches already carry both a strong score and a
-      // runner-up margin. Once the frame has passed the lightweight stability
-      // gate, emit immediately so a handheld operator does not lose a card
-      // while waiting for an unnecessary second OCR pass.
       if (species.confidence === 'high') {
-        lastEmittedKeyRef.current = key;
+        lastEmittedRef.current = { key, emittedAt: Date.now() };
         onResultRef.current({ rawText, displayText, ocrConfidence: result.confidence, crop: 'operator-zone', species });
         return;
       }
 
-      // Medium matches still need repeat evidence, but reads remain valid for a
-      // short handheld window rather than needing to be adjacent OCR samples.
       const now = Date.now();
       const cutoff = now - MEDIUM_AGREEMENT_WINDOW_MS;
       mediumEvidenceRef.current = [
@@ -261,7 +266,7 @@ export function useTitleOcr({
         return;
       }
 
-      lastEmittedKeyRef.current = key;
+      lastEmittedRef.current = { key, emittedAt: Date.now() };
       onResultRef.current({ rawText, displayText, ocrConfidence: result.confidence, crop: 'operator-zone', species });
     } catch {
       initializedRef.current = true;
@@ -270,6 +275,7 @@ export function useTitleOcr({
     } finally {
       readingRef.current = false;
       lastOcrAtRef.current = Date.now();
+      setAutoScanState(autoScanRef.current ? 'waiting' : 'manual');
     }
   }, [cropTargetRef, previewEnabled, videoRef]);
 
@@ -278,9 +284,10 @@ export function useTitleOcr({
       previousSignatureRef.current = [];
       stableCountRef.current = 0;
       mediumEvidenceRef.current = [];
-      lastEmittedKeyRef.current = '';
+      lastEmittedRef.current = null;
       initializedRef.current = false;
       setStatus('idle');
+      setAutoScanState('manual');
       return;
     }
 
@@ -291,14 +298,28 @@ export function useTitleOcr({
       const video = videoRef.current;
       const cropTarget = cropTargetRef.current;
       if (cancelled || readingRef.current || !video || !cropTarget || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+      if (!autoScanRef.current) {
+        setAutoScanState('manual');
+        return;
+      }
       const crop = getOperatorCrop(video, cropTarget);
       if (!crop) return;
       const signature = sampleSignature(crop);
       stableCountRef.current = isSimilarFrame(previousSignatureRef.current, signature) ? stableCountRef.current + 1 : 0;
       previousSignatureRef.current = signature;
       const now = Date.now();
-      if (stableCountRef.current < STABLE_SAMPLES_REQUIRED || now - lastOcrAtRef.current < OCR_COOLDOWN_MS) return;
-      void runRecognition();
+      const cooledDown = now - lastOcrAtRef.current >= OCR_COOLDOWN_MS;
+      const stableEnough = stableCountRef.current >= STABLE_SAMPLES_REQUIRED;
+      const forcedAttemptDue = now - lastAutoAttemptAtRef.current >= FORCED_AUTO_ATTEMPT_MS;
+      if (!cooledDown) {
+        setAutoScanState('waiting');
+        return;
+      }
+      if (!stableEnough && !forcedAttemptDue) {
+        setAutoScanState('waiting');
+        return;
+      }
+      void runRecognition('auto');
     }, SAMPLE_EVERY_MS);
 
     return () => {
@@ -311,5 +332,5 @@ export function useTitleOcr({
   }, [cropTargetRef, enabled, runRecognition, videoRef]);
 
   useEffect(() => { if (!previewEnabled) setPreview(null); }, [previewEnabled]);
-  return { status, preview, captureSample: runRecognition };
+  return { status, preview, autoScanState, captureSample: () => runRecognition('capture') };
 }
