@@ -7,10 +7,12 @@ const SETTINGS_KEY = 'pokedex-hunter:settings:v1';
 // A compact but readable default name strip. The operator can still resize it;
 // this leaves useful card context while avoiding most HP, border, and attack text.
 export const DEFAULT_OCR_ZONE: OcrZone = {
-  x: 10,
-  y: 21.5,
-  width: 80,
-  height: 10,
+  // Relative to the full Scan surface. The box is deliberately tall enough
+  // for large vintage-card title typography while staying focused on one line.
+  x: 12,
+  y: 23,
+  width: 76,
+  height: 6.4,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

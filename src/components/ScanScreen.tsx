@@ -298,15 +298,14 @@ export function ScanScreen({
         onPointerUp={endZoneDrag}
         onPointerCancel={endZoneDrag}
       >
-        <div className="operator-zone-label">{signal === 'green' ? 'MATCH FOUND' : signal === 'yellow' ? 'CONFIRM POSSIBLE READ' : 'SCAN POKÉMON NAME HERE'}</div>
+        <div className="operator-zone-label">{signal === 'green' ? 'MATCH FOUND' : signal === 'yellow' ? 'CONFIRM POSSIBLE READ' : 'Capture Pokémon name in the scan box'}</div>
         <span className="zone-handle nw" data-zone-handle="nw" aria-hidden="true" />
         <span className="zone-handle ne" data-zone-handle="ne" aria-hidden="true" />
         <span className="zone-handle sw" data-zone-handle="sw" aria-hidden="true" />
         <span className="zone-handle se" data-zone-handle="se" aria-hidden="true" />
+        {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
       </div>
       </section>
-
-      {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
       {error && <div className="permission-card"><p>{error}</p><button onClick={() => void start()}>Enable camera</button></div>}
     </section>
 

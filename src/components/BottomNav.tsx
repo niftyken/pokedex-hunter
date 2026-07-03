@@ -4,7 +4,7 @@ import type { Screen } from '../types';
 const tabs = [
   { id: 'scan' as const, label: 'Scan', icon: Camera },
   { id: 'wanted' as const, label: 'Wanted List', icon: List },
-  { id: 'tools' as const, label: 'Scan Tools', icon: Wrench },
+  { id: 'tools' as const, label: 'Settings', icon: Wrench },
 ];
 
 export function BottomNav({ active, onChange }: { active: Screen; onChange: (screen: Screen) => void }) {

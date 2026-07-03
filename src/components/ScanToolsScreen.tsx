@@ -30,8 +30,8 @@ export function ScanToolsScreen({
   return <main className="content-screen tools-screen">
     <header className="page-header">
       <div>
-        <p className="tools-eyebrow"><Wrench size={15} /> Scan tools</p>
-        <h1>Camera & setup</h1>
+        <p className="tools-eyebrow"><Wrench size={15} /> Settings</p>
+        <h1>Camera & defaults</h1>
       </div>
     </header>
     <p className="page-copy">Keep Scan focused on cards. Use these controls when changing camera hardware or restoring the recommended scan setup.</p>

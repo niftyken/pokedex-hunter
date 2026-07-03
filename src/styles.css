@@ -181,3 +181,118 @@ button { cursor: pointer; }
   .preview-closed .camera-stage { flex-basis: clamp(300px, 43svh, 350px); }
   .scan-bottom-stack { padding-top: 6px; padding-bottom: 7px; }
 }
+
+/* v0.8.0: approved camera-background Scan composition.
+   The live camera now remains the visual layer behind every Scan module; the
+   lower cards are translucent overlays rather than a hard stage boundary. */
+.scan-screen {
+  position: relative;
+  height: calc(100svh - 76px - env(safe-area-inset-bottom));
+  min-height: 0;
+  overflow: hidden;
+  background: #090c12;
+}
+.scan-screen .camera-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  flex: none;
+}
+.scan-screen .camera,
+.scan-screen .frozen-frame {
+  object-position: center center;
+}
+.scan-screen .camera-vignette {
+  background:
+    linear-gradient(180deg, rgba(4, 7, 12, .76), rgba(4, 7, 12, .10) 29%, rgba(4, 7, 12, .34) 61%, rgba(4, 7, 12, .84) 100%),
+    radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, .50) 100%);
+}
+.scan-screen .operator-zone-stage { z-index: 4; }
+.scan-screen .operator-ocr-zone {
+  border-color: #dcefff;
+  border-width: 2px;
+  border-radius: 10px;
+  background: rgba(9, 16, 23, .13);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.14) inset, 0 0 28px rgba(0,0,0,.42);
+}
+/* The helper intentionally sits over less-important card metadata immediately
+   above the target line, never over the Pokémon name within the box. */
+.scan-screen .operator-zone-label {
+  top: auto;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  color: #f4f7fc;
+  font-size: clamp(.58rem, 2vw, .77rem);
+  letter-spacing: .015em;
+  text-transform: none;
+  text-align: center;
+  background: rgba(5, 9, 14, .45);
+  border-radius: 999px;
+  backdrop-filter: blur(5px);
+}
+.scan-screen .operator-ocr-zone.green .operator-zone-label,
+.scan-screen .operator-ocr-zone.yellow .operator-zone-label {
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.scan-screen .read-pill {
+  position: absolute;
+  z-index: 7;
+  top: calc(100% + 72px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(86vw, 360px);
+  padding: 8px 14px;
+  pointer-events: none;
+  text-align: center;
+  box-shadow: 0 6px 18px #0007;
+}
+.scan-screen .scan-bottom-stack {
+  position: absolute;
+  z-index: 9;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+  align-content: end;
+  background: transparent;
+}
+.scan-screen .ocr-preview-panel,
+.scan-screen .confirmation-strip,
+.scan-screen .manual-entry,
+.scan-screen .scan-control-dock {
+  background: rgba(10, 16, 24, .82);
+  border-color: rgba(216, 231, 249, .16);
+  box-shadow: 0 10px 28px rgba(0,0,0,.40);
+  backdrop-filter: blur(16px) saturate(125%);
+}
+.scan-screen .ocr-preview-panel { padding: 9px 10px; }
+.scan-screen .ocr-preview-image {
+  min-height: 62px;
+  max-height: 80px;
+  background: rgba(3, 7, 11, .72);
+}
+.scan-screen .ocr-preview-image img { max-height: 80px; object-fit: contain; }
+.scan-screen .scan-control-dock { padding: 7px; }
+.scan-screen .scan-mode-readout { margin-bottom: 5px; }
+.scan-screen .manual-entry { background: rgba(10, 16, 24, .84); }
+.scan-screen .bottom-nav { background: rgba(7, 11, 17, .86); }
+
+@media (max-height: 760px) {
+  .scan-screen .read-pill { top: calc(100% + 58px); padding: 7px 12px; }
+  .scan-screen .ocr-preview-image { min-height: 52px; max-height: 66px; }
+  .scan-screen .ocr-preview-image img { max-height: 66px; }
+  .scan-screen .scan-bottom-stack { gap: 5px; bottom: 6px; }
+}
