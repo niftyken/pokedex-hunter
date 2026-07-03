@@ -17,7 +17,7 @@ export function SettingsScreen({ settings, onChange }: { settings: AppSettings; 
 
     <section className="settings-group">
       <h2>Match Sensitivity</h2>
-      <p>Controls how readily uncertain reads receive a brief yellow signal.</p>
+      <p>Controls how readily uncertain recognized Pokémon receive a brief yellow signal.</p>
       <div className="segmented">
         {(['conservative', 'balanced', 'sensitive'] as Sensitivity[]).map((value) => (
           <button key={value} className={settings.sensitivity === value ? 'selected' : ''} onClick={() => update('sensitivity', value)}>{value}</button>
@@ -27,6 +27,7 @@ export function SettingsScreen({ settings, onChange }: { settings: AppSettings; 
 
     <section className="settings-group">
       <h2>Camera</h2>
+      <p>The camera runs only while the Scan tab is open.</p>
       <select value={settings.cameraDeviceId} onChange={(e) => update('cameraDeviceId', e.target.value)}>
         <option value="">Rear camera (preferred)</option>
         {devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Camera'}</option>)}
@@ -35,28 +36,12 @@ export function SettingsScreen({ settings, onChange }: { settings: AppSettings; 
 
     <section className="settings-group inline-setting">
       <div>
-        <h2>Show detected title</h2>
-        <p>Briefly display recognized title text on Scan.</p>
-      </div>
-      <input type="checkbox" checked={settings.showDetectedTitle} onChange={(e) => update('showDetectedTitle', e.target.checked)} />
-    </section>
-
-    <section className="settings-group inline-setting">
-      <div>
         <h2>Developer demo OCR</h2>
-        <p>Show simulated title controls on Scan. Turn this off to use live English title OCR from the camera.</p>
+        <p>Show simulated title controls on Scan. Leave this off for live English title OCR.</p>
       </div>
       <input type="checkbox" checked={settings.demoMode} onChange={(e) => update('demoMode', e.target.checked)} />
     </section>
 
-    <section className="settings-group inline-setting">
-      <div>
-        <h2>Show OCR crop preview</h2>
-        <p>Helpful for tuning live OCR. Shows the exact title crop plus a manual sample button on Scan.</p>
-      </div>
-      <input type="checkbox" checked={settings.showOcrDebug} onChange={(e) => update('showOcrDebug', e.target.checked)} />
-    </section>
-
-    <p className="offline-note">All list data and settings stay on this device.</p>
+    <p className="offline-note">OCR preview is controlled directly from Scan. All list data and settings stay on this device.</p>
   </main>;
 }

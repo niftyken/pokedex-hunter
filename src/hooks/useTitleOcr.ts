@@ -1,17 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { findWantedMatch } from '../lib/matching';
-import { formatDexNumber, resolvePokemonRecognition, type PokemonRecognition } from '../lib/species';
+import { resolvePokemonRecognition, formatDexNumber, type PokemonRecognition } from '../lib/species';
 import { TesseractOcrAdapter } from '../lib/ocr';
-import type { OcrStatus, Sensitivity } from '../types';
+import type { OcrStatus } from '../types';
 
 const SAMPLE_EVERY_MS = 240;
 const OCR_COOLDOWN_MS = 1_050;
 const STABLE_SAMPLES_REQUIRED = 4;
-
-interface CropAttempt {
-  canvas: HTMLCanvasElement;
-  label: string;
-}
 
 interface SourceRect {
   x: number;
@@ -20,75 +14,71 @@ interface SourceRect {
   height: number;
 }
 
-export interface OcrDebugCandidate {
-  label: string;
-  imageUrl: string;
-  text: string;
-  confidence: number;
-  selected: boolean;
-  directWantedMatch: boolean;
-  canonicalText?: string;
-  speciesScore?: number;
-  runnerUp?: string;
-}
-
 export interface ScanRecognition {
   rawText: string;
   displayText: string;
   ocrConfidence: number;
-  crop: string;
+  crop: 'operator-zone';
   species?: PokemonRecognition;
+}
+
+export interface OcrPreview {
+  imageUrl: string;
+  rawText: string;
+  canonicalText?: string;
+  ocrConfidence: number;
+  speciesScore?: number;
+  runnerUp?: string;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getRenderedVideoMetrics(video: HTMLVideoElement) {
-  const rect = video.getBoundingClientRect();
+/**
+ * Maps the visible operator-controlled OCR rectangle into raw camera pixels.
+ * This deliberately makes no assumptions about a card's border, era, or layout.
+ */
+function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): SourceRect | null {
+  if (!video.videoWidth || !video.videoHeight) return null;
+
+  const videoRect = video.getBoundingClientRect();
   const sourceWidth = video.videoWidth;
   const sourceHeight = video.videoHeight;
-  const boxRatio = rect.width / rect.height;
+  const boxRatio = videoRect.width / videoRect.height;
   const videoRatio = sourceWidth / sourceHeight;
 
-  let renderedWidth = rect.width;
-  let renderedHeight = rect.height;
+  let renderedWidth = videoRect.width;
+  let renderedHeight = videoRect.height;
   let offsetX = 0;
   let offsetY = 0;
 
   if (videoRatio > boxRatio) {
-    renderedHeight = rect.height;
+    renderedHeight = videoRect.height;
     renderedWidth = renderedHeight * videoRatio;
-    offsetX = (rect.width - renderedWidth) / 2;
+    offsetX = (videoRect.width - renderedWidth) / 2;
   } else {
-    renderedWidth = rect.width;
+    renderedWidth = videoRect.width;
     renderedHeight = renderedWidth / videoRatio;
-    offsetY = (rect.height - renderedHeight) / 2;
+    offsetY = (videoRect.height - renderedHeight) / 2;
   }
 
-  return { rect, sourceWidth, sourceHeight, renderedWidth, renderedHeight, offsetX, offsetY };
+  const x = ((targetRect.left - videoRect.left - offsetX) / renderedWidth) * sourceWidth;
+  const y = ((targetRect.top - videoRect.top - offsetY) / renderedHeight) * sourceHeight;
+  const width = (targetRect.width / renderedWidth) * sourceWidth;
+  const height = (targetRect.height / renderedHeight) * sourceHeight;
+
+  const clampedX = clamp(x, 0, sourceWidth - 1);
+  const clampedY = clamp(y, 0, sourceHeight - 1);
+  return {
+    x: clampedX,
+    y: clampedY,
+    width: clamp(width, 1, sourceWidth - clampedX),
+    height: clamp(height, 1, sourceHeight - clampedY),
+  };
 }
 
-function mapElementRectToVideo(video: HTMLVideoElement, targetRect: DOMRect): SourceRect | null {
-  if (!video.videoWidth || !video.videoHeight) return null;
-
-  const metrics = getRenderedVideoMetrics(video);
-  const leftInRendered = targetRect.left - metrics.rect.left - metrics.offsetX;
-  const topInRendered = targetRect.top - metrics.rect.top - metrics.offsetY;
-
-  const x = (leftInRendered / metrics.renderedWidth) * metrics.sourceWidth;
-  const y = (topInRendered / metrics.renderedHeight) * metrics.sourceHeight;
-  const width = (targetRect.width / metrics.renderedWidth) * metrics.sourceWidth;
-  const height = (targetRect.height / metrics.renderedHeight) * metrics.sourceHeight;
-
-  const clampedX = clamp(x, 0, metrics.sourceWidth - 1);
-  const clampedY = clamp(y, 0, metrics.sourceHeight - 1);
-  const clampedWidth = clamp(width, 1, metrics.sourceWidth - clampedX);
-  const clampedHeight = clamp(height, 1, metrics.sourceHeight - clampedY);
-  return { x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight };
-}
-
-function preprocessTitleCanvas(canvas: HTMLCanvasElement, threshold: boolean): HTMLCanvasElement {
+function preprocessCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return canvas;
 
@@ -104,13 +94,11 @@ function preprocessTitleCanvas(canvas: HTMLCanvasElement, threshold: boolean): H
   }
 
   const mean = total / luminances.length;
-  const thresholdValue = mean > 155 ? 185 : mean > 120 ? 168 : 152;
   for (let index = 0, sampleIndex = 0; index < data.length; index += 4, sampleIndex += 1) {
     const normalized = clamp((luminances[sampleIndex] - mean) * 2.15 + 128, 0, 255);
-    const output = threshold ? (normalized > thresholdValue ? 255 : 0) : normalized;
-    data[index] = output;
-    data[index + 1] = output;
-    data[index + 2] = output;
+    data[index] = normalized;
+    data[index + 1] = normalized;
+    data[index + 2] = normalized;
     data[index + 3] = 255;
   }
 
@@ -118,51 +106,25 @@ function preprocessTitleCanvas(canvas: HTMLCanvasElement, threshold: boolean): H
   return canvas;
 }
 
-function buildCropCanvas(video: HTMLVideoElement, source: SourceRect, threshold: boolean): HTMLCanvasElement {
+function getOperatorCrop(video: HTMLVideoElement, targetElement: HTMLElement): HTMLCanvasElement | null {
+  const rect = mapElementRectToVideo(video, targetElement.getBoundingClientRect());
+  if (!rect) return null;
+
   const scale = 4;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(260, Math.round(source.width * scale));
-  canvas.height = Math.max(64, Math.round(source.height * scale));
+  canvas.width = Math.max(320, Math.round(rect.width * scale));
+  canvas.height = Math.max(84, Math.round(rect.height * scale));
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return canvas;
+  if (!ctx) return null;
 
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(video, source.x, source.y, source.width, source.height, 0, 0, canvas.width, canvas.height);
-  return preprocessTitleCanvas(canvas, threshold);
-}
-
-/**
- * The target zone spans almost the full printed title row. Candidate strips
- * intentionally overlap: vintage cards need more left room; modern cards often
- * have a left-side icon; all avoid the far-right HP/type area.
- */
-function getTitleCropAttempts(video: HTMLVideoElement, targetElement: HTMLElement): CropAttempt[] {
-  const titleBand = mapElementRectToVideo(video, targetElement.getBoundingClientRect());
-  if (!titleBand) return [];
-
-  const variants = [
-    { label: 'vintage-wide', left: 0.0, right: 0.88, threshold: false },
-    { label: 'modern', left: 0.15, right: 0.86, threshold: false },
-    { label: 'center-threshold', left: 0.06, right: 0.80, threshold: true },
-  ];
-
-  return variants.map((variant) => {
-    const x = titleBand.x + titleBand.width * variant.left;
-    const width = titleBand.width * (variant.right - variant.left);
-    const clampedX = clamp(x, 0, video.videoWidth - 1);
-    const source: SourceRect = {
-      x: clampedX,
-      y: titleBand.y,
-      width: clamp(width, 1, video.videoWidth - clampedX),
-      height: titleBand.height,
-    };
-    return { canvas: buildCropCanvas(video, source, variant.threshold), label: variant.label };
-  });
+  ctx.drawImage(video, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
+  return preprocessCanvas(canvas);
 }
 
 function sampleSignature(canvas: HTMLCanvasElement): number[] {
   const sample = document.createElement('canvas');
-  sample.width = 20;
+  sample.width = 24;
   sample.height = 8;
   const ctx = sample.getContext('2d', { willReadFrequently: true });
   if (!ctx) return [];
@@ -184,22 +146,17 @@ export function useTitleOcr({
   videoRef,
   cropTargetRef,
   enabled,
-  debugEnabled,
-  wantedList,
-  sensitivity,
+  previewEnabled,
   onResult,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   cropTargetRef: RefObject<HTMLElement | null>;
   enabled: boolean;
-  debugEnabled: boolean;
-  wantedList: string[];
-  sensitivity: Sensitivity;
+  previewEnabled: boolean;
   onResult: (result: ScanRecognition) => void;
 }) {
   const [status, setStatus] = useState<OcrStatus>('idle');
-  const [debugCandidates, setDebugCandidates] = useState<OcrDebugCandidate[]>([]);
-  const [lastResult, setLastResult] = useState<ScanRecognition | null>(null);
+  const [preview, setPreview] = useState<OcrPreview | null>(null);
   const onResultRef = useRef(onResult);
   const adapterRef = useRef<TesseractOcrAdapter | null>(null);
   const previousSignatureRef = useRef<number[]>([]);
@@ -210,84 +167,50 @@ export function useTitleOcr({
 
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
 
-  const runRecognition = useCallback(async (isManual: boolean) => {
+  const runRecognition = useCallback(async () => {
     const video = videoRef.current;
     const cropTarget = cropTargetRef.current;
     const adapter = adapterRef.current;
     if (!video || !cropTarget || !adapter || readingRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
-    const attempts = getTitleCropAttempts(video, cropTarget);
-    if (!attempts.length) return;
+    const crop = getOperatorCrop(video, cropTarget);
+    if (!crop) return;
 
     readingRef.current = true;
     setStatus(initializedRef.current ? 'reading' : 'warming');
 
     try {
-      const evaluated = [] as Array<{
-        attempt: CropAttempt;
-        text: string;
-        confidence: number;
-        recognition: PokemonRecognition | null;
-        directWantedMatch: boolean;
-        score: number;
-      }>;
-
-      for (const attempt of attempts) {
-        const result = await adapter.readTitle(attempt.canvas);
-        const text = result.text.trim();
-        const recognition = text ? resolvePokemonRecognition(text) : null;
-        const canonicalName = recognition?.species.name ?? text;
-        const match = canonicalName ? findWantedMatch(canonicalName, wantedList, sensitivity, result.confidence) : null;
-        const directWantedMatch = Boolean(match?.isDirectMatch && recognition);
-
-        // A plausible closed-lexicon species recognition is more useful than a
-        // generic OCR string; an active Wanted List match is still decisive.
-        const speciesBonus = recognition
-          ? (recognition.confidence === 'high' ? 2_400 : 1_200) + recognition.score * 100
-          : 0;
-        const matchBonus = directWantedMatch ? 10_000 : match ? 800 : 0;
-        const score = matchBonus + speciesBonus + result.confidence + Math.min(18, text.length);
-        evaluated.push({ attempt, text, confidence: result.confidence, recognition, directWantedMatch, score });
-      }
-
-      const best = evaluated.reduce<typeof evaluated[number] | null>((currentBest, candidate) => (
-        !currentBest || candidate.score > currentBest.score ? candidate : currentBest
-      ), null);
+      const result = await adapter.readTitle(crop);
+      const rawText = result.text.trim();
+      const species = rawText ? resolvePokemonRecognition(rawText) : null;
+      const displayText = species
+        ? `${species.species.name} ${formatDexNumber(species.species.dex)}${species.confidence === 'medium' ? ' ?' : ''}`
+        : rawText;
 
       initializedRef.current = true;
       setStatus('ready');
-      if (!best) return;
 
-      if (debugEnabled || isManual) {
-        setDebugCandidates(evaluated.map((candidate) => ({
-          label: candidate.attempt.label,
-          imageUrl: candidate.attempt.canvas.toDataURL('image/png'),
-          text: candidate.text || '—',
-          confidence: candidate.confidence,
-          selected: candidate.attempt.label === best.attempt.label,
-          directWantedMatch: candidate.directWantedMatch,
-          canonicalText: candidate.recognition
-            ? `${candidate.recognition.species.name} ${formatDexNumber(candidate.recognition.species.dex)}${candidate.recognition.confidence === 'medium' ? ' ?' : ''}`
+      if (previewEnabled) {
+        setPreview({
+          imageUrl: crop.toDataURL('image/png'),
+          rawText: rawText || '—',
+          canonicalText: species ? displayText : undefined,
+          ocrConfidence: result.confidence,
+          speciesScore: species?.score,
+          runnerUp: species?.runnerUp
+            ? `${species.runnerUp.name} (${Math.round(species.runnerUpScore * 100)}%)`
             : undefined,
-          speciesScore: candidate.recognition?.score,
-          runnerUp: candidate.recognition?.runnerUp
-            ? `${candidate.recognition.runnerUp.name} (${Math.round(candidate.recognition.runnerUpScore * 100)}%)`
-            : undefined,
-        })));
+        });
       }
 
-      if (best.text) {
-        const scanRecognition: ScanRecognition = {
-          rawText: best.text,
-          displayText: best.recognition
-            ? `${best.recognition.species.name} ${formatDexNumber(best.recognition.species.dex)}${best.recognition.confidence === 'medium' ? ' ?' : ''}`
-            : best.text,
-          ocrConfidence: best.confidence,
-          crop: best.attempt.label,
-          species: best.recognition ?? undefined,
-        };
-        setLastResult(scanRecognition);
-        onResultRef.current(scanRecognition);
+      if (rawText) {
+        onResultRef.current({
+          rawText,
+          displayText,
+          ocrConfidence: result.confidence,
+          crop: 'operator-zone',
+          species: species ?? undefined,
+        });
       }
     } catch {
       initializedRef.current = true;
@@ -296,7 +219,7 @@ export function useTitleOcr({
       readingRef.current = false;
       lastOcrAtRef.current = Date.now();
     }
-  }, [cropTargetRef, debugEnabled, sensitivity, videoRef, wantedList]);
+  }, [cropTargetRef, previewEnabled, videoRef]);
 
   useEffect(() => {
     if (!enabled) {
@@ -316,9 +239,9 @@ export function useTitleOcr({
       const cropTarget = cropTargetRef.current;
       if (cancelled || readingRef.current || !video || !cropTarget || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
-      const baseAttempt = getTitleCropAttempts(video, cropTarget)[0];
-      if (!baseAttempt) return;
-      const signature = sampleSignature(baseAttempt.canvas);
+      const crop = getOperatorCrop(video, cropTarget);
+      if (!crop) return;
+      const signature = sampleSignature(crop);
       stableCountRef.current = isSimilarFrame(previousSignatureRef.current, signature)
         ? stableCountRef.current + 1
         : 0;
@@ -326,7 +249,7 @@ export function useTitleOcr({
 
       const now = Date.now();
       if (stableCountRef.current < STABLE_SAMPLES_REQUIRED || now - lastOcrAtRef.current < OCR_COOLDOWN_MS) return;
-      void runRecognition(false);
+      void runRecognition();
     }, SAMPLE_EVERY_MS);
 
     return () => {
@@ -339,8 +262,8 @@ export function useTitleOcr({
   }, [cropTargetRef, enabled, runRecognition, videoRef]);
 
   useEffect(() => {
-    if (!debugEnabled) setDebugCandidates([]);
-  }, [debugEnabled]);
+    if (!previewEnabled) setPreview(null);
+  }, [previewEnabled]);
 
-  return { status, debugCandidates, lastResult, captureSample: () => runRecognition(true) };
+  return { status, preview, captureSample: runRecognition };
 }

@@ -1,28 +1,27 @@
+import { DEFAULT_WANTED_LIST } from './defaultWantedList';
 import type { AppSettings } from '../types';
 
 const WANTED_KEY = 'pokedex-hunter:wanted-list:v1';
 const SETTINGS_KEY = 'pokedex-hunter:settings:v1';
 
-// Seed only a browser that has never stored a Wanted List. An intentional empty
-// list remains empty, and an existing user's list is never replaced on update.
-const FIRST_LAUNCH_WANTED_LIST = ['Charizard', 'Pikachu', 'Vulpix', 'Zoroark', 'Mr. Mime'];
-
 export const DEFAULT_SETTINGS: AppSettings = {
   sensitivity: 'balanced',
-  showDetectedTitle: true,
   demoMode: false,
   cameraDeviceId: '',
+  // Early field testing is easier when the operator can see exactly what OCR sees.
   showOcrDebug: true,
 };
 
 export function loadWantedList(): string[] {
   try {
     const raw = localStorage.getItem(WANTED_KEY);
-    if (raw === null) return FIRST_LAUNCH_WANTED_LIST;
+    // Only a truly first-time browser gets the bundled 392-item list. An existing
+    // user's intentional empty list or personal edits remain untouched.
+    if (raw === null) return [...DEFAULT_WANTED_LIST];
     const saved = JSON.parse(raw);
     return Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [];
   } catch {
-    return [];
+    return [...DEFAULT_WANTED_LIST];
   }
 }
 

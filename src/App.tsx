@@ -19,7 +19,7 @@ export default function App() {
   }
 
   return <div className="app-shell">
-    {screen === 'scan' && <ScanScreen wantedList={wantedList} settings={settings} onResolveHit={resolveHit} />}
+    {screen === 'scan' && <ScanScreen wantedList={wantedList} settings={settings} onSettingsChange={setSettings} onResolveHit={resolveHit} />}
     {screen === 'wanted' && <WantedListScreen wantedList={wantedList} onSave={(items) => { setWantedList(items); setScreen('scan'); }} />}
     {screen === 'settings' && <SettingsScreen settings={settings} onChange={setSettings} />}
     <BottomNav active={screen} onChange={setScreen} />
