@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_WANTED_LIST } from '../lib/defaultWantedList';
 import { parseWantedList } from '../lib/matching';
 import { formatDexNumber, searchPokemonSpecies, type PokemonSpecies } from '../lib/species';
 
@@ -26,8 +25,6 @@ export function WantedListScreen({ wantedList, onSave }: { wantedList: string[];
   return <main className="content-screen">
     <header className="page-header"><div><p className="eyebrow">Search targets</p><h1>Want List</h1></div><span className="count-badge">{parsed.length} unique</span></header>
     <p className="page-copy">One Pokémon search term per line. Duplicates and blank lines are ignored automatically.</p>
-    <button className="secondary-wide" onClick={() => setRaw(DEFAULT_WANTED_LIST.join('\n'))}>Load bundled 392 Pokémon</button>
-
     <section className="wanted-typeahead" aria-label="Add a Pokémon to the Want List">
       <label>Add a Pokémon</label>
       <div className="wanted-add-input">

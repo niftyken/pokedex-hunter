@@ -328,3 +328,38 @@ button { cursor: pointer; }
 .tools-card .camera-picker-label input:focus { outline: none; border-color: #c5ff8490; box-shadow: 0 0 0 3px #c5ff8416; }
 .restore-want-list-button:disabled { opacity: .62; cursor: progress; }
 .restore-note { margin: -3px 1px 0; color: #c8d6e9; font-size: .78rem; line-height: 1.42; }
+
+
+/* v0.8.2: remove the old mobile-only centering transform that displaced the
+   overlay stack on desktop widths. Keep a deliberate centered app canvas on
+   laptops while preserving the full-width mobile composition. */
+@media (min-width: 768px) {
+  .app-shell {
+    width: min(760px, 100%);
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  .scan-screen {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .scan-screen .scan-bottom-stack {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    margin: 0;
+    transform: none;
+  }
+
+  .bottom-nav {
+    left: 50%;
+    right: auto;
+    width: min(760px, 100%);
+    max-width: 760px;
+    transform: translateX(-50%);
+  }
+}

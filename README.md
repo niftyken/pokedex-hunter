@@ -2,7 +2,7 @@
 
 **Pokedex Hunter** is a camera-first React + Vite Progressive Web App for finding physical English Pokémon cards that match a locally stored **Want List**. It is intended for bulk-card searching on iPhone and Android, with all preferences and lists retained locally in browser storage.
 
-Current release: **v0.8.1**.
+Current release: **v0.8.2**.
 
 ## Current capabilities
 
@@ -18,11 +18,12 @@ Current release: **v0.8.1**.
 - **Fixed matching policy:** The former Sensitivity setting was removed. The app uses one consistent handheld policy: a high-confidence canonical read can immediately trigger a Want List hit, while medium evidence needs repeat agreement and operator confirmation where appropriate. Matching is canonical and exact, so **Mew** never matches **Mewtwo**, **Latias** never matches **Latios**, and the two Nidoran forms never match each other.
 - **Green / yellow workflow:** Strong Want List matches open a green hit sheet. A medium candidate stays yellow until the operator confirms it. The hit sheet presents the canonical species and its Pokédex number, followed by **Remove from Want List**, **Keep on Want List**, and **Reject**.
 - **Manual name check and autocomplete:** Enter any Pokémon name manually. As you type, a short local type-ahead list prioritizes Want List entries, then canonical National Dex names. Selecting a suggestion immediately checks its exact canonical species; a Want List match follows the same green-alert workflow as OCR.
-- **Want List workflow:** One search term per line; blanks and duplicates are ignored. The Want List tab also includes an **Add a Pokémon** autocomplete field for adding canonical names without spelling mistakes. First-time installations receive the bundled default 392-Pokémon list, and existing users can load it from Want List at any time.
+- **Want List workflow:** One search term per line; blanks and duplicates are ignored. The Want List tab includes an **Add a Pokémon** autocomplete field for adding canonical names without spelling mistakes. First-time installations receive the bundled default list; existing users refresh it from **Settings → Restore default Want List**.
 - **Published default Want List:** Settings stores a configurable published CSV URL. **Restore default Want List** fetches that CSV only after confirmation, reads one Pokémon name from the first populated column of each row, validates exact National Dex identities, and replaces the local Want List. This lets the primary list be maintained in a published Google Sheet without creating a new build.
 - **Settings:** The Settings tab contains camera selection, the default Want List CSV URL, Restore default Want List, and Reset scan setup. **Reset scan setup** restores the default OCR region and turns OCR Preview and Auto Scanning on; it does not replace the Want List.
 - **Visible build marker:** The Scan header displays the release version, which should be checked before evaluating a new Vercel deployment.
 - **PWA cache revisioning:** The service-worker cache is versioned per release to reduce stale app-shell problems after deployment.
+- **Desktop-safe Scan layout:** On wider browser windows, the Scan experience stays in a centered application canvas and explicitly clears mobile centering transforms, preventing translucent control panels from shifting off the left edge.
 
 ## Run locally
 
@@ -70,7 +71,7 @@ When **Restore default Want List** is pressed, the app asks for confirmation, fe
 - `src/App.tsx` — screen routing and local persistence.
 - `src/components/ScanScreen.tsx` — live camera UI, status messaging, non-hit feedback, OCR-zone controls, OCR Preview, scan-mode controls, manual checks, confirmation, and green hit sheet.
 - `src/components/ScanToolsScreen.tsx` — Settings tab: camera selection, published default Want List source, list restore, and reset of the full scan setup.
-- `src/components/WantedListScreen.tsx` — multiline Want List editor and bundled-list loader.
+- `src/components/WantedListScreen.tsx` — multiline Want List editor and Add-a-Pokémon autocomplete.
 - `src/components/BottomNav.tsx` — Scan / Want List / Settings navigation.
 - `src/hooks/useCamera.ts` — `getUserMedia` lifecycle and camera teardown.
 - `src/hooks/useTitleOcr.ts` — crop mapping, preprocessing, forgiving auto-scan gating, manual Capture override, temporal agreement, and preview state.
