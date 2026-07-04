@@ -1,4 +1,5 @@
 import { DEFAULT_WANTED_LIST } from './defaultWantedList';
+import { DEFAULT_WANT_LIST_SOURCE_URL } from './defaultWantListSource';
 import type { AppSettings, OcrZone } from '../types';
 
 const WANTED_KEY = 'pokedex-hunter:wanted-list:v1';
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showOcrDebug: true,
   autoScan: true,
   ocrZone: DEFAULT_OCR_ZONE,
+  defaultWantListUrl: DEFAULT_WANT_LIST_SOURCE_URL,
 };
 
 export function loadWantedList(): string[] {
@@ -55,6 +57,9 @@ export function loadSettings(): AppSettings {
       showOcrDebug: typeof saved.showOcrDebug === 'boolean' ? saved.showOcrDebug : DEFAULT_SETTINGS.showOcrDebug,
       autoScan: typeof saved.autoScan === 'boolean' ? saved.autoScan : DEFAULT_SETTINGS.autoScan,
       ocrZone: validZone(saved.ocrZone) ?? DEFAULT_OCR_ZONE,
+      defaultWantListUrl: typeof saved.defaultWantListUrl === 'string' && saved.defaultWantListUrl.trim()
+        ? saved.defaultWantListUrl.trim()
+        : DEFAULT_WANT_LIST_SOURCE_URL,
     };
   } catch {
     return DEFAULT_SETTINGS;

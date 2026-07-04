@@ -21,7 +21,7 @@ export default function App() {
   return <div className="app-shell">
     {screen === 'scan' && <ScanScreen wantedList={wantedList} settings={settings} onSettingsChange={setSettings} onResolveHit={resolveHit} />}
     {screen === 'wanted' && <WantedListScreen wantedList={wantedList} onSave={(items) => { setWantedList(items); setScreen('scan'); }} />}
-    {screen === 'tools' && <ScanToolsScreen settings={settings} onSettingsChange={setSettings} />}
+    {screen === 'tools' && <ScanToolsScreen settings={settings} onSettingsChange={setSettings} onRestoreWantList={setWantedList} />}
     <BottomNav active={screen} onChange={setScreen} />
   </div>;
 }

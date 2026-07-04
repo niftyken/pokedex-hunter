@@ -3,7 +3,7 @@ import type { Screen } from '../types';
 
 const tabs = [
   { id: 'scan' as const, label: 'Scan', icon: Camera },
-  { id: 'wanted' as const, label: 'Wanted List', icon: List },
+  { id: 'wanted' as const, label: 'Want List', icon: List },
   { id: 'tools' as const, label: 'Settings', icon: Wrench },
 ];
 

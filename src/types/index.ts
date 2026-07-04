@@ -1,5 +1,5 @@
 export type Screen = 'scan' | 'wanted' | 'tools';
-export type Signal = 'idle' | 'yellow' | 'green';
+export type Signal = 'idle' | 'yellow' | 'green' | 'not-wanted';
 export type OcrStatus = 'idle' | 'warming' | 'ready' | 'reading';
 
 export interface OcrZone {
@@ -18,6 +18,8 @@ export interface AppSettings {
   autoScan: boolean;
   /** Operator-adjustable OCR rectangle, saved per device. */
   ocrZone: OcrZone;
+  /** Published CSV used only by the explicit restore action in Settings. */
+  defaultWantListUrl: string;
 }
 
 export interface MatchResult {

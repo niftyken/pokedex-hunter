@@ -75,7 +75,7 @@ export function ScanScreen({
   const [frozen, setFrozen] = useState<FrozenFrame | null>(null);
   const ignoreResultsUntilRef = useRef(0);
 
-  const remainingLabel = useMemo(() => `Wanted List: ${wantedList.length}`, [wantedList.length]);
+  const remainingLabel = useMemo(() => `Want List: ${wantedList.length}`, [wantedList.length]);
   const previewVisible = settings.showOcrDebug;
   const isFrozen = Boolean(frozen && match);
   const zone = settings.ocrZone ?? DEFAULT_OCR_ZONE;
@@ -134,7 +134,7 @@ export function ScanScreen({
 
     setPendingRecognition(null);
     if (nextMatch) openHit(nextMatch, recognition);
-    else setSignal('idle');
+    else setSignal(recognition.species?.confidence === 'high' ? 'not-wanted' : 'idle');
   }, [frozen, openHit, wantedList]);
 
   const handleScanning = useCallback(() => {
@@ -174,7 +174,7 @@ export function ScanScreen({
     setSignal('idle');
     setLastRead(pendingRecognition.displayText.replace(/\s\?$/, ''));
     setPendingRecognition(null);
-    setConfirmedNote('Confirmed — not on Wanted List');
+    setConfirmedNote('Confirmed — not on Want List');
     ignoreResultsUntilRef.current = Date.now() + 900;
   }, [openHit, pendingRecognition, wantedList]);
 
@@ -208,8 +208,8 @@ export function ScanScreen({
       openHit(nextMatch, recognition);
       return;
     }
-    setSignal('idle');
-    setManualFeedback(`${displayText} is not on your Wanted List.`);
+    setSignal('not-wanted');
+    setManualFeedback(`${displayText} is not on your Want List.`);
   }, [manualName, openHit, wantedList]);
 
   const selectManualSuggestion = useCallback((species: PokemonSpecies) => {
@@ -227,8 +227,8 @@ export function ScanScreen({
     setLastRead(recognition.displayText);
     if (nextMatch) openHit(nextMatch, recognition);
     else {
-      setSignal('idle');
-      setManualFeedback(`${recognition.displayText} is not on your Wanted List.`);
+      setSignal('not-wanted');
+      setManualFeedback(`${recognition.displayText} is not on your Want List.`);
     }
   }, [openHit, wantedList]);
 
@@ -270,9 +270,11 @@ export function ScanScreen({
   const friendlyReadName = lastRead.replace(/\s+#\d{4}/, '').replace(/\s+\?$/, '').trim();
   const statusMessage = pendingRecognition
     ? `Is that a ${friendlyReadName || 'Pokémon'}?`
-    : friendlyReadName
-      ? `Found a ${friendlyReadName}.`
-      : 'Scanning for Pokémon names…';
+    : signal === 'not-wanted' && friendlyReadName
+      ? `${friendlyReadName} is not on the list. Move on.`
+      : friendlyReadName
+        ? `Found a ${friendlyReadName}.`
+        : 'Scanning for Pokémon names…';
   const freezeTitle = frozen?.speciesName
     ? `${frozen.speciesName} ${formatDexNumber(frozen.dex ?? 0)}`
     : match?.wantedTerm;
@@ -285,7 +287,7 @@ export function ScanScreen({
 
       <header className="scan-header">
       <div className="brand"><span className="brand-mark">P</span><span className="brand-copy"><span className="brand-name">Pokedex Hunter</span><span className="build-marker">{APP_VERSION}</span></span></div>
-      <span className="remaining-pill" aria-label="Wanted list count">{remainingLabel}</span>
+      <span className="remaining-pill" aria-label="Want list count">{remainingLabel}</span>
       </header>
 
       <section className="operator-zone-stage" aria-label="Resizable OCR name scan area">
@@ -303,7 +305,7 @@ export function ScanScreen({
         <span className="zone-handle ne" data-zone-handle="ne" aria-hidden="true" />
         <span className="zone-handle sw" data-zone-handle="sw" aria-hidden="true" />
         <span className="zone-handle se" data-zone-handle="se" aria-hidden="true" />
-        {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
+        {!isFrozen && <div className={`read-pill ${lastRead ? 'has-read' : ''} ${signal}`} aria-live="polite"><strong>{statusMessage}</strong></div>}
       </div>
       </section>
       {error && <div className="permission-card"><p>{error}</p><button onClick={() => void start()}>Enable camera</button></div>}
@@ -392,8 +394,8 @@ export function ScanScreen({
       <h1>{freezeTitle}</h1>
       <p className="recognized">Read: {frozen?.recognizedTitle}</p>
       <div className="hit-actions">
-        <button className="remove" onClick={() => { onResolveHit(match.wantedTerm, 'remove'); clearTransient(); }}>Remove from List</button>
-        <button className="keep" onClick={() => { onResolveHit(match.wantedTerm, 'keep'); clearTransient(); }}>Keep on List</button>
+        <button className="remove" onClick={() => { onResolveHit(match.wantedTerm, 'remove'); clearTransient(); }}>Remove from Want List</button>
+        <button className="keep" onClick={() => { onResolveHit(match.wantedTerm, 'keep'); clearTransient(); }}>Keep on Want List</button>
         <button className="reject" onClick={() => { onResolveHit(match.wantedTerm, 'reject'); clearTransient(); }}>Reject</button>
       </div>
     </div>}
